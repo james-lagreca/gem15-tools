@@ -1,0 +1,11 @@
+# Test configuration only; the tools are not installed as a package.
+# Run from the repo root, e.g. with ArcGIS Pro's Python (it has GDAL):
+#   "<Pro install>\bin\Python\envs\arcgispro-py3\python.exe" -m pytest
+# Live tests read the public GEM-15 bucket and are skipped unless GEM15_LIVE=1.
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "live: reads the public GEM-15 bucket (set GEM15_LIVE=1 to run)",
+    "arcpy: needs ArcGIS Pro's arcpy",
+]

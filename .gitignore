@@ -1,0 +1,11 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# ArcGIS Pro writes tool metadata next to a .pyt
+*.pyt.xml
+
+# GDAL side files and local outputs
+*.aux.xml
+/out/
