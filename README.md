@@ -4,9 +4,10 @@ Stream Google's GEM-15 15 m global elevation model into ArcGIS Pro and QGIS
 for mapping active faults, without downloading whole tiles.
 
 **Status: pre-release (v0.1 in progress).** The shared core, the
-command-line VRT builder and the ArcGIS Pro toolbox's four tools work and are
-tested headless (arcpy without the Pro window); checks in the Pro map view
-are listed in `tests/manual_pro_checks.md`. The QGIS plugin is in progress.
+command-line VRT builder, the ArcGIS Pro toolbox's four tools and the QGIS
+plugin's v0.1 features work and are tested headless (arcpy without the Pro
+window; QGIS 3.28 without its window). Checks still to do by hand in the Pro
+map view are listed in `tests/manual_pro_checks.md`; QGIS 4 is untested.
 
 ## What is here
 
@@ -14,10 +15,11 @@ are listed in `tests/manual_pro_checks.md`. The QGIS plugin is in progress.
 | --- | --- |
 | `core/gem15core/` | Shared core, standard library only (Python 3.9+): catalogue lookup with a local cache, cell names, CRS choice, VRT writer. `gdalops.py` adds GDAL warp and clip. |
 | `arcgis/` | ArcGIS Pro Python toolbox `GEM15Tools.pyt`, with its own copy of the core. |
-| `qgis/gem15/` | QGIS plugin (to come), with its own copy of the core. |
+| `qgis/gem15/` | QGIS plugin: current-view hillshade and live LRM, Processing tools (build VRT, clip, derivatives), with its own copy of the core. Install and use: `qgis/README.md`. |
 | `cli/gem15_vrt.py` | Command line: build a VRT (and optionally a GeoTIFF clip) for an area. |
 | `extras/gem15_fault_viewer.js` | Earth Engine Code Editor viewer. Syntax-checked only. |
 | `tools/vendor_core.py` | Copies the core into the plugin folders. |
+| `tools/package_qgis_plugin.py`, `tools/qgis_python.py` | Build the QGIS plugin zip; run QGIS's own Python (for its tests). |
 
 ## Quick start (ArcGIS Pro 3.x)
 
@@ -49,6 +51,18 @@ are listed in `tests/manual_pro_checks.md`. The QGIS plugin is in progress.
 
 GDA2020 / GA LCC has up to about 1.2 % scale error in central Australia:
 fine for display, but clip to a UTM grid for measurements.
+
+## Quick start (QGIS 3.28 or later)
+
+1. Build the plugin zip: `python tools/package_qgis_plugin.py` (writes
+   `dist/gem15-<version>.zip`).
+2. **Plugins > Manage and Install Plugins... > Install from ZIP**.
+3. Zoom to your area and press the **GEM-15** toolbar button: the DTM for the
+   current view, as a multidirectional hillshade. The button's menu also has
+   the DSM and a live local relief model; **Processing > GEM-15** builds
+   VRTs, clips and terrain derivatives for any area.
+
+Full details: `qgis/README.md`.
 
 ## Quick start (command line)
 
@@ -88,5 +102,6 @@ everything:
 
 Set `GEM15_LIVE=1` to also run the checks against the live, public bucket.
 Tests marked `arcpy` run the toolbox headless in Pro's Python (skipped
-elsewhere). Edit the core only in `core/gem15core/`, then run
+elsewhere). The QGIS plugin's tests need QGIS's own Python; see
+`qgis/README.md`. Edit the core only in `core/gem15core/`, then run
 `python tools/vendor_core.py`.

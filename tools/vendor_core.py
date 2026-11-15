@@ -30,8 +30,10 @@ def _sources():
 
 
 def _read(path):
+    """File bytes with CRLF read as LF: git checks text files out with CRLF on
+    Windows (core.autocrlf), which is not drift."""
     with open(path, "rb") as fh:
-        return fh.read()
+        return fh.read().replace(b"\r\n", b"\n")
 
 
 def _same_text(path, text):
