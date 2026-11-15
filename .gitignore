@@ -9,3 +9,4 @@ __pycache__/
 # GDAL side files and local outputs
 *.aux.xml
 /out/
+/dist/

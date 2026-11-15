@@ -1,0 +1,29 @@
+# QGIS plugin metadata. See https://docs.qgis.org/latest/en/docs/pyqgis_developer_cookbook/plugins/plugins.html
+# Before uploading to plugins.qgis.org, fill in author, email, homepage,
+# tracker and repository: they are placeholders on purpose.
+[general]
+name=GEM-15 Elevation
+qgisMinimumVersion=3.28
+qgisMaximumVersion=4.99
+description=Stream Google's GEM-15 15 m global elevation (DTM and DSM) into QGIS without downloading tiles, with terrain views for mapping active faults.
+version=0.1.0
+author=GEM-15 tools contributors
+email=
+about=Adds GEM-15 15 m elevation for the current map view as a multidirectional hillshade, streamed from Cloud-Optimised GeoTIFFs in Google's public bucket (only the blocks and overview levels on screen are read). Also a live local relief model (LRM), and Processing tools to build VRTs, clip to GeoTIFF and make hillshade, slope and LRM from a clip.
+
+    Data: GEM-15, CC-BY 4.0. "This dataset is produced by Google". Please cite Batchu et al. (2026), GEM-15, EarthArXiv preprint, doi:10.31223/X55N75. Heights are EGM96 orthometric (EPSG:5773). The DTM is predicted by machine learning: treat it with care under canopy, and do not map tile seams or acquisition boundaries as scarps.
+
+    Needs an internet connection; uses the GDAL that ships with QGIS.
+license=GPL-2.0-or-later
+tracker=
+repository=
+homepage=
+category=Raster
+tags=elevation,dem,dtm,dsm,hillshade,cog,stac,google,gem-15,faults,geomorphology,raster
+icon=icons/gem15.svg
+experimental=True
+deprecated=False
+hasProcessingProvider=yes
+supportsQt6=True
+changelog=
+    0.1.0 First release: current-view hillshade (DTM/DSM), live LRM, Processing tools (Build VRT, Clip to GeoTIFF, Terrain derivatives).

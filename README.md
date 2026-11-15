@@ -5,7 +5,7 @@ for mapping active faults, without downloading whole tiles.
 
 **Status: pre-release (v0.1 in progress).** The shared core and the
 command-line VRT builder work and are tested; the ArcGIS Pro toolbox has one
-tool so far; the QGIS plugin is not written yet.
+tool so far; the QGIS plugin has its v0.1 features (see `qgis/README.md`).
 
 ## What is here
 
@@ -13,10 +13,11 @@ tool so far; the QGIS plugin is not written yet.
 | --- | --- |
 | `core/gem15core/` | Shared core, standard library only (Python 3.9+): catalogue lookup with a local cache, cell names, CRS choice, VRT writer. `gdalops.py` adds GDAL warp and clip. |
 | `arcgis/` | ArcGIS Pro Python toolbox `GEM15Tools.pyt`, with its own copy of the core. |
-| `qgis/gem15/` | QGIS plugin (to come), with its own copy of the core. |
+| `qgis/gem15/` | QGIS plugin: current-view hillshade and live LRM, Processing tools (build VRT, clip, derivatives), with its own copy of the core. Install and use: `qgis/README.md`. |
 | `cli/gem15_vrt.py` | Command line: build a VRT (and optionally a GeoTIFF clip) for an area. |
 | `extras/gem15_fault_viewer.js` | Earth Engine Code Editor viewer. Syntax-checked only. |
 | `tools/vendor_core.py` | Copies the core into the plugin folders. |
+| `tools/package_qgis_plugin.py`, `tools/qgis_python.py` | Build the QGIS plugin zip; run QGIS's own Python (for its tests). |
 
 ## Quick start (command line)
 
@@ -55,4 +56,5 @@ everything:
 ```
 
 Set `GEM15_LIVE=1` to also run the checks against the live, public bucket.
+The QGIS plugin's tests need QGIS's own Python; see `qgis/README.md`.
 Edit the core only in `core/gem15core/`, then run `python tools/vendor_core.py`.

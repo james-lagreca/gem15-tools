@@ -15,13 +15,23 @@ Assumptions (flagged):
      default approximates it to 1/8 pixel (about 2 m here), and the result
      then depends on how a read is chunked: the same pixel came out up to
      0.8 m different on screen and in a clip of the same VRT.
+ G4. Set process-wide, GDAL_DISABLE_READDIR_ON_OPEN=EMPTY_DIR stops GDAL
+     finding side-car files (.ovr, .aux.xml, world files) of every other
+     raster, and CPL_VSIL_CURL_ALLOWED_EXTENSIONS=.tif hides any other remote
+     file type. Inside QGIS that would change the user's other layers for the
+     whole session. So by default the options are set only for paths in the
+     GEM-15 bucket (GDAL >= 3.6, SetPathSpecificOption). Checked 2026-11-15
+     on GDAL 3.6.4 and 3.9.2: scoped READDIR still removes all 15 side-car
+     probes per remote tile and leaves a local .ovr visible.
+     GDAL_HTTP_USERAGENT is honoured only process-wide, so scoped mode sends
+     GDAL's default (no User-Agent header): still no user details.
 """
 
 import os
 
 from osgeo import gdal, osr
 
-from . import PIXEL_M, USER_AGENT, Gem15Error, crs, extent, stac, vrt
+from . import BUCKET_URL, PIXEL_M, USER_AGENT, Gem15Error, crs, extent, stac, vrt
 
 gdal.UseExceptions()
 
@@ -35,10 +45,32 @@ REMOTE_GDAL_CONFIG = {
 }
 
 
-def configure_remote():
-    """Apply REMOTE_GDAL_CONFIG to this process (G1)."""
+# Options that would change how GDAL opens anything else if set process-wide (G4).
+_BUCKET_ONLY = ("GDAL_DISABLE_READDIR_ON_OPEN", "CPL_VSIL_CURL_ALLOWED_EXTENSIONS")
+
+
+def configure_remote(scoped=True, prefix=None):
+    """Apply REMOTE_GDAL_CONFIG (G1).
+
+    scoped : True (default) limits the options to paths starting with
+             `prefix` where GDAL allows it (G4); with an older GDAL only the
+             options that are harmless process-wide are set. False sets all
+             of them process-wide (fine for a stand-alone script).
+    prefix : default "/vsicurl/" + the bucket URL (tests pass a local server).
+    Returns "scoped" or "global", saying how the options were applied.
+    """
+    prefix = prefix or "/vsicurl/" + BUCKET_URL
+    set_for_path = (getattr(gdal, "SetPathSpecificOption", None)      # GDAL >= 3.6
+                    or getattr(gdal, "SetCredential", None))           # GDAL 3.5 name
+    if scoped and set_for_path:
+        for k, v in REMOTE_GDAL_CONFIG.items():
+            set_for_path(prefix, k, v)
+        return "scoped"
     for k, v in REMOTE_GDAL_CONFIG.items():
+        if scoped and k in _BUCKET_ONLY:
+            continue                     # costs extra requests, but leaves other data alone
         gdal.SetConfigOption(k, v)
+    return "global"
 
 
 def srs(user_input):
@@ -140,14 +172,18 @@ def build_vrt(bbox, out_vrt, product="dtm", band_name=None, dst_crs=None,
     return out_vrt
 
 
-def clip_to_geotiff(src, out_tif, log=print):
-    """Copy a (VRT) raster to a compressed local GeoTIFF; downloads only its area."""
+def clip_to_geotiff(src, out_tif, log=print, callback=None):
+    """Copy a (VRT) raster to a compressed local GeoTIFF; downloads only its area.
+
+    callback : optional GDAL progress function (fraction, message, data) that
+               returns 0 to cancel (GDAL then raises RuntimeError).
+    """
     log = log or (lambda *_: None)
     ds = gdal.Open(src)
     mb = ds.RasterXSize * ds.RasterYSize * 4 / 1e6
     log(f"Clipping {ds.RasterXSize} x {ds.RasterYSize} px "
         f"(~{mb:.0f} MB as uncompressed float32) -> {out_tif}")
     gdal.Translate(out_tif, ds, options=gdal.TranslateOptions(
-        format="GTiff", creationOptions=[
+        format="GTiff", callback=callback, creationOptions=[
             "COMPRESS=DEFLATE", "PREDICTOR=3", "TILED=YES", "BIGTIFF=IF_SAFER"]))
     return out_tif

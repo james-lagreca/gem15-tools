@@ -24,6 +24,12 @@ Behaviour (flagged):
  V5. Reads at reduced resolution go to the COGs' internal overviews through
      the VRT (checked live: a whole 8192 x 16384 tile read into 256 x 256 px
      downloaded 0.15 MB). A full-resolution 512 px block of DTM is ~0.9 MB.
+ V6. The VRT declares virtual overviews (<OverviewList>, GDAL >= 3.2) at the
+     COGs' overview factors. GDAL gives a VRT of several sources no overviews
+     of its own, so a warp of it (gdalops.build_vrt across UTM zones) read
+     zoomed out pulled full-resolution blocks: 28 MB instead of 0.5 MB for a
+     1/16 read of two 2048 px tiles (checked 2026-11-15, GDAL 3.6.4 and
+     3.9.2, local HTTP server). With the list, the warp reads the overviews.
 """
 
 import math
@@ -34,6 +40,9 @@ from typing import Tuple
 
 from . import (ATTRIBUTION, CITATION, COG_BLOCK_PX, DATA_LICENCE, PIXEL_M,
                VERTICAL_DATUM, Gem15Error, crs, paths)
+
+# The COGs carry 4 internal overviews (an 8192 px tile down to 512 px): V6.
+COG_OVERVIEW_FACTORS = (2, 4, 8, 16)
 
 
 @dataclass
@@ -108,6 +117,9 @@ def write_vrt(tiles, product, out_path, band_name=None, bounds=None,
         raise Gem15Error(f"Empty VRT bounds {bounds}")
 
     root = ET.Element("VRTDataset", rasterXSize=str(cols), rasterYSize=str(rows))
+    if COG_OVERVIEW_FACTORS:                                                   # V6
+        ET.SubElement(root, "OverviewList", resampling="nearest").text = " ".join(
+            str(f) for f in COG_OVERVIEW_FACTORS)
     srs = ET.SubElement(root, "SRS", dataAxisToSRSAxisMapping="1,2")
     srs.text = crs.utm_wkt(epsg)
     ET.SubElement(root, "GeoTransform").text = (
