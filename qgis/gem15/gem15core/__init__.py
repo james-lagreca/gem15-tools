@@ -50,9 +50,16 @@ DATA_LICENCE = "CC-BY-4.0"
 ATTRIBUTION = "This dataset is produced by Google"
 CITATION = ("Batchu et al. (2026), GEM-15, EarthArXiv preprint, "
             "doi:10.31223/X55N75")
+CITATION_URL = "https://doi.org/10.31223/X55N75"
+MAP_CREDIT = "Elevation: GEM-15, produced by Google (CC BY 4.0)"
 
 # Sent as the HTTP User-Agent. Deliberately generic: no user details.
 USER_AGENT = "gem15-tools/" + __version__
+
+# Shown where a user might be misled (tool messages, layer descriptions).
+CAVEAT = ("GEM-15's DTM is predicted by machine learning: unreliable under trees and "
+          "buildings. Straight features along tile edges or UTM zone boundaries may be "
+          "seams, not scarps. Heights are on the EGM96 geoid, not AHD.")
 
 
 class Gem15Error(Exception):

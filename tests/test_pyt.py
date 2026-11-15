@@ -99,10 +99,14 @@ def test_tool_definitions_import(monkeypatch):
     t = load_pyt(monkeypatch)
     tb = t.Toolbox()
     assert tb.alias == "gem15"
-    assert tb.tools == [t.ConnectToGEM15, t.AddGEM15ForExtent, t.TerrainStack,
-                        t.ClipForAnalysis]
-    assert [c().label for c in tb.tools] == ["Connect to GEM-15", "Add GEM-15 For Extent",
-                                             "Terrain Stack (live)", "Clip for Analysis"]
+    assert tb.tools == [t.GEM15ForCurrentView, t.SwathProfile, t.ConnectToGEM15,
+                        t.AddGEM15ForExtent, t.TerrainStack, t.ClipForAnalysis]
+    assert [c().label for c in tb.tools] == [
+        "GEM-15 for Current View", "Swath Profile", "Connect to GEM-15",
+        "Add GEM-15 for Extent", "Terrain Stack", "Clip for Analysis"]
+    # The one-click tool and the profile at the top; the rest in a toolset.
+    assert [getattr(c(), "category", None) for c in tb.tools] == \
+        [None, None] + [t.STEP_BY_STEP] * 4
 
 
 def test_derivative_choices(monkeypatch):
@@ -111,9 +115,16 @@ def test_derivative_choices(monkeypatch):
     # Any order in, drawing order out (hillshade at the bottom); Pro may quote values.
     assert t.deriv_keys([labels[2], "'" + labels[0] + "'"]) == ["hillshade", "lrm"]
     assert t.deriv_keys(["slope"]) == ["slope"] and t.deriv_keys(None) == []
-    assert t.layer_label("GEM15_dtm", "lrm", 250) == "GEM15_dtm LRM (250 m)"
-    assert "sun 30 deg" in t.layer_label("x", "hillshade")
+    assert t.layer_label("GEM15_dtm", "lrm", 250).startswith("GEM15_dtm LRM (250 m, +/-2.5 m")
+    assert "multidirectional, altitude 30 deg" in t.layer_label("x", "hillshade")
+    assert "sun 270 deg" in t.layer_label("x", "hillshade", azimuth=270, z=2)
     assert t.file_suffix("lrm", 300.0) == "lrm300m" and t.file_suffix("slope") == "slope"
+    assert t.file_suffix("hillshade") == "hillshade"
+    assert t.file_suffix("hillshade", azimuth=270, z=2) == "hillshade_az270_z2"
+    assert t.product_key("DTM (bare earth)") == "dtm" and t.product_key("dsm") == "dsm"
+    assert t.illumination_key("Across a fault trend") == "across_trend"
+    assert t.lrm_radius_value(next(iter(t.LRM_PRESET_LABELS))) == 150.0
+    assert t.lrm_radius_value("450") == 450.0 and t.lrm_radius_value(None) == 300.0
     assert t.safe_name("GEM15 dtm (x)") == "GEM15_dtm__x"
 
 
@@ -136,12 +147,15 @@ def test_vrt_stem(monkeypatch):
 
 def test_layer_styles(monkeypatch):
     t = load_pyt(monkeypatch)
-    for key in ("hillshade", "slope", "lrm"):
+    for key in ("hillshade", "slope", "lrm", "canopy"):
         d = t.style_layer_json({"colorizer": {"type": "CIMRasterStretchColorizer",
                                               "colorScheme": "Black to White"}}, key)
-        assert d["colorizer"]["statsType"] == "AreaOfView"          # DRA on every layer
+        col = d["colorizer"]
+        assert col["statsType"] == "GlobalStats"                   # fixed, not DRA (A13)
+        assert (col["customStretchMin"], col["customStretchMax"]) == t.DISPLAY_RANGES[key]
+    assert t.DISPLAY_RANGES["lrm"] == (-2.5, 2.5)                   # as the QGIS plugin
     lrm = t.style_layer_json({}, "lrm")
-    assert lrm["minScale"] == t.LIVE_LRM_MIN_SCALE and lrm["transparency"] == 40
+    assert lrm["minScale"] == t.LIVE_LRM_MIN_SCALE == 50000 and lrm["transparency"] == 40
     ramp = lrm["colorizer"]["colorRamp"]
     assert ramp["type"] == "CIMMultipartColorRamp" and len(ramp["colorRamps"]) == 2
     assert t.style_layer_json({}, "slope")["visibility"] is False

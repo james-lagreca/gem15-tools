@@ -104,33 +104,120 @@ def test_separate_layers_return_paths_headless(tb, acs):
     assert paths and all(p.endswith("mosaic.tif") and arcpy.Exists(p) for p in paths)
 
 
+def read_window(path, bbox, epsg):
+    """(arcpy array, GDAL array) of the part of a raster inside a lon/lat box.
+    The VRTs cover whole tiles now, so read only the test area."""
+    r = arcpy.Raster(path)
+    x0, y0, x1, y1 = gdalops.aoi_bounds_in(f"EPSG:{epsg}", bbox)
+    ext, cell = r.extent, r.meanCellWidth
+    col, row = int((x0 - ext.XMin) / cell), int((ext.YMax - y1) / cell)
+    nx, ny = int((x1 - x0) / cell), int((y1 - y0) / cell)
+    a = arcpy.RasterToNumPyArray(r, arcpy.Point(ext.XMin + col * cell,
+                                                ext.YMax - (row + ny) * cell),
+                                 nx, ny, nodata_to_value=np.nan)
+    # osgeo's GDAL reads the "/vsicurl?" form only without a process-wide
+    # CPL_VSIL_CURL_ALLOWED_EXTENSIONS (paths P2); other tests may set it.
+    old = gdal.GetConfigOption("CPL_VSIL_CURL_ALLOWED_EXTENSIONS")
+    gdal.SetConfigOption("CPL_VSIL_CURL_ALLOWED_EXTENSIONS", None)
+    try:
+        g = gdal.Open(path).ReadAsArray(col, row, nx, ny)
+    finally:
+        gdal.SetConfigOption("CPL_VSIL_CURL_ALLOWED_EXTENSIONS", old)
+    return a, g
+
+
 def test_vrt_with_portable_sources(tb, tmp_path, monkeypatch):
     res = tb.AddGEM15ForExtent(lonlat_extent(VIC), "dtm", "VRT file", None, None, None,
                                None, str(tmp_path))
     path = res.getOutput(1)
     with open(path, encoding="utf-8") as fh:
         assert "/vsicurl?list_dir=no&amp;empty_dir=yes&amp;url=https%3A%2F%2F" in fh.read()
-    a = arcpy.RasterToNumPyArray(arcpy.Raster(path), nodata_to_value=np.nan)
+    a, g = read_window(path, VIC, 32755)
     assert np.isfinite(a).mean() > 0.9
-    # osgeo's GDAL reads the "/vsicurl?" form only without a process-wide
-    # CPL_VSIL_CURL_ALLOWED_EXTENSIONS (paths P2); other tests set it.
-    old = gdal.GetConfigOption("CPL_VSIL_CURL_ALLOWED_EXTENSIONS")
-    gdal.SetConfigOption("CPL_VSIL_CURL_ALLOWED_EXTENSIONS", None)
-    try:
-        np.testing.assert_array_equal(a, gdal.Open(path).ReadAsArray())
-    finally:
-        gdal.SetConfigOption("CPL_VSIL_CURL_ALLOWED_EXTENSIONS", old)
+    np.testing.assert_array_equal(a, g)
 
 
 def test_vrt_across_zones(tb, tmp_path):
-    """Warped to NZTM; plain /vsicurl/ sources so GDAL's warp can open them."""
+    """Warped to NZTM, each zone's warp over its own tiles (gdalops G5)."""
     res = tb.AddGEM15ForExtent(lonlat_extent(NZ), "dtm", "VRT file", None, None, None,
                                None, str(tmp_path))
     path = res.getOutput(1)
     assert arcpy.Describe(path).spatialReference.factoryCode == 2193
-    a = arcpy.RasterToNumPyArray(arcpy.Raster(path), nodata_to_value=np.nan)
+    a, g = read_window(path, NZ, 2193)
     assert np.isfinite(a).mean() > 0.9                       # not silently empty
-    np.testing.assert_array_equal(a, gdal.Open(path).ReadAsArray())
+    np.testing.assert_array_equal(a, g)
+
+
+def test_current_view_tool_with_canopy_and_edges(tb, pyt, tmp_path):
+    """The one-click tool, given an extent (headless there is no view): a VRT,
+    live layers, the canopy check and the tile edges."""
+    layers = ["Hillshade (multidirectional)", "Local relief model",
+              pyt.CANOPY_LABEL, pyt.EDGES_LABEL]
+    res = tb.GEM15ForCurrentView("DTM (bare earth)", layers, None, lonlat_extent(VIC),
+                                 "VRT file")
+    outs = res.getOutput(0).split(";")
+    dtm, dsm = outs[0], outs[1]
+    assert dtm.endswith("_epsg32755.vrt") and "gem15_dsm_" in dsm
+    assert any(o.endswith(pyt.TILE_EDGES_FC) for o in outs)
+    lyrx = [o for o in outs if o.endswith(".lyrx")]
+    assert [os.path.basename(f).rsplit("_", 1)[-1] for f in lyrx] == \
+        ["hillshade.lyrx", "lrm300m.lyrx", "canopy.lyrx"]
+    # DSM and DTM VRTs share their grid, so the difference needs no resampling.
+    rd, rs = arcpy.Raster(dtm), arcpy.Raster(dsm)
+    assert (rd.extent.XMin, rd.extent.YMax, rd.width) == (rs.extent.XMin, rs.extent.YMax,
+                                                          rs.width)
+    x0, _, _, y1 = gdalops.aoi_bounds_in("EPSG:32755", VIC)
+    corner = (x0 + 300, y1 - 300)
+    canopy = arcpy.Raster(lyrx[2])                              # through the layer file
+    c = np.squeeze(canopy.read(origin_coordinate=corner, ncols=40, nrows=40)).astype(float)
+    if canopy.noDataValue is not None:
+        c[c == canopy.noDataValue] = np.nan
+    assert set(np.unique(c[np.isfinite(c)])) <= {1.0}           # marks or NoData, never 0
+    # Layers built on a stand-in (A15) read the real source's pixels.
+    hs = np.squeeze(arcpy.Raster(lyrx[0]).read(origin_coordinate=corner, ncols=32,
+                                               nrows=32)).astype(float)
+    ref = np.squeeze(pyt.terrain_rasters(dtm, ["hillshade"])["hillshade"].read(
+        origin_coordinate=corner, ncols=32, nrows=32)).astype(float)
+    assert np.nanstd(hs) > 1 and np.allclose(hs, ref, atol=1e-3)
+    assert "machine learning" in res.getMessages(0)             # the caveat is shown
+
+
+def test_terrain_stack_on_cloud_mosaic_is_quick(tb, pyt, acs, gdb, tmp_path):
+    """MakeRasterLayer on a cloud mosaic took ~180 s per layer; built on a
+    stand-in (A15) the whole stack is far quicker, with the same pixels."""
+    import time
+    md = tb.AddGEM15ForExtent(lonlat_extent(VIC), "dtm", "Mosaic dataset", acs,
+                              gdb).getOutput(0)
+    t = time.perf_counter()
+    files = tb.TerrainStack(md, ["Hillshade (multidirectional)", "Local relief model"], 300,
+                            30, str(tmp_path)).getOutput(0).split(";")
+    assert time.perf_counter() - t < 120
+    x0, _, _, y1 = gdalops.aoi_bounds_in("EPSG:32755", VIC)
+    corner = (x0 + 600, y1 - 600)
+    lrm = np.squeeze(arcpy.Raster(files[1]).read(origin_coordinate=corner, ncols=32,
+                                                 nrows=32)).astype(float)
+    ref = np.squeeze(pyt.terrain_rasters(md, ["lrm"])["lrm"].read(
+        origin_coordinate=corner, ncols=32, nrows=32)).astype(float)
+    assert np.isfinite(lrm).mean() > 0.9 and np.allclose(lrm, ref, atol=1e-3)
+
+
+def test_swath_profile_on_live_vrt(tb, tmp_path):
+    vrt_path = tb.AddGEM15ForExtent(lonlat_extent(VIC), "dtm", "VRT file", None, None, None,
+                                    None, str(tmp_path)).getOutput(1)
+    x0, y0, x1, y1 = gdalops.aoi_bounds_in("EPSG:32755", VIC)
+    gdb = arcpy.management.CreateFileGDB(str(tmp_path), "p.gdb").getOutput(0)
+    fc = arcpy.management.CreateFeatureclass(gdb, "line", "POLYLINE",
+                                             spatial_reference=arcpy.SpatialReference(32755)
+                                             ).getOutput(0)
+    with arcpy.da.InsertCursor(fc, ["SHAPE@"]) as cur:
+        cur.insertRow([arcpy.Polyline(arcpy.Array([arcpy.Point(x0 + 500, y0 + 500),
+                                                   arcpy.Point(x1 - 500, y1 - 500)]),
+                                      arcpy.SpatialReference(32755))])
+    res = tb.SwathProfile(fc, vrt_path, 300, str(tmp_path), "vic", 0, 600, 1500, 2100)
+    csv = res.getOutput(0)
+    rows = [ln for ln in open(csv, encoding="utf-8") if not ln.startswith("#")]
+    assert len(rows) > 50 and rows[0].startswith("distance_m")
+    assert "Vertical separation" in res.getMessages(0)
 
 
 def test_clip_matches_streamed_pixels(tb, pyt, tmp_path):

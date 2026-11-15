@@ -49,6 +49,12 @@ def utm_zone_of_epsg(epsg):
     return None
 
 
+def zone_label(epsg):
+    """32755 -> 'UTM 55S'; other codes -> 'EPSG:xxxx'. For layer names."""
+    z = utm_zone_of_epsg(epsg)
+    return f"UTM {z[0]}{z[1]}" if z else f"EPSG:{epsg}"
+
+
 def utm_epsg(zone, south):
     if not 1 <= int(zone) <= 60:
         raise Gem15Error(f"UTM zone must be 1-60, not {zone}")

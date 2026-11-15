@@ -241,21 +241,24 @@ def test_multidirectional_hillshade(pyt, dem_tif):
     assert md60[50, 10] == pytest.approx(255 * math.sin(math.radians(60)), abs=1)
 
 
-def test_layer_files_and_map(pyt, dem_tif, tmp_path):
+def test_layer_files_and_map(pyt, dem_tif, tmp_path, synthetic):
     files = pyt.terrain_layer_files(dem_tif, "dem", ["lrm", "hillshade", "slope"],
                                     str(tmp_path / "layers"), 250, 30)
     assert [os.path.basename(f) for f in files] == ["dem_hillshade.lyrx", "dem_slope.lyrx",
                                                     "dem_lrm250m.lyrx"]
     lrm = json.load(open(files[2], encoding="utf-8"))["layerDefinitions"][0]
-    assert lrm["name"] == "dem LRM (250 m)" and lrm["minScale"] == pyt.LIVE_LRM_MIN_SCALE
+    assert lrm["name"].startswith("dem LRM (250 m, +/-2.5 m")
+    assert lrm["minScale"] == pyt.LIVE_LRM_MIN_SCALE == 50000
+    assert "CC BY 4.0" in lrm["description"]                  # credit in the layer
     assert "FunctionRasterDatasetName" in lrm["dataConnection"]["dataset"]   # live, not pixels
-    for f in files:                                       # Pro parses the styled CIM
+    for f, key in zip(files, ["hillshade", "slope", "lrm"]):   # Pro parses the styled CIM
         layer = arcpy.mp.LayerFile(f).listLayers()[0]
         col = layer.getDefinition("V3").colorizer
-        assert col.statsType == "AreaOfView"              # DRA
+        assert col.statsType == "GlobalStats" and col.useCustomStretchMinMax   # fixed (A13)
+        assert (col.customStretchMin, col.customStretchMax) == pyt.DISPLAY_RANGES[key]
+        assert col.stretchType == "MinimumMaximum"
     col = arcpy.mp.LayerFile(files[2]).listLayers()[0].getDefinition("V3").colorizer
     assert type(col.colorRamp).__name__ == "CIMMultipartColorRamp"
-    assert col.stretchType == "StandardDeviations"
     # Into a map, in a project copied from Pro's blank template.
     blank = os.path.join(arcpy.GetInstallInfo()["InstallDir"],
                          r"Resources\ArcToolBox\Services\routingservices\data\Blank.aprx")
@@ -264,14 +267,31 @@ def test_layer_files_and_map(pyt, dem_tif, tmp_path):
     shutil.copyfile(blank, tmp_path / "t.aprx")
     aprx = arcpy.mp.ArcGISProject(str(tmp_path / "t.aprx"))
     m = aprx.createMap("GEM", "MAP")
-    group = pyt.add_layer_files(m, files, "GEM-15 terrain: dem")
-    names = [lyr.name for lyr in group.listLayers()]
-    assert names == ["dem LRM (250 m)", "dem slope (degrees)",
-                     "dem hillshade (multidirectional, sun 30 deg)"]     # LRM on top
-    assert not group.listLayers()[1].visible                             # slope off
-    lyr = pyt.add_rasters_to_map(m, [dem_tif], ["GEM-15 dtm"])[0]
-    assert lyr.name == "GEM-15 dtm"
-    assert lyr.getDefinition("V3").colorizer.statsType == "AreaOfView"
+    lyr = pyt.add_rasters_to_map(m, [dem_tif], ["GEM-15 DTM (test)"])[0]
+    assert lyr.name == "GEM-15 DTM (test)"
+    assert lyr.getDefinition("V3").colorizer.statsType == "AreaOfView"   # elevation: DRA
+    assert len(pyt.add_rasters_to_map(m, [dem_tif], ["again"])) == 1    # no duplicate
+    assert [x.name for x in m.listLayers()].count("GEM-15 DTM (test)") == 1
+    group = pyt.add_layer_files(m, files, "GEM-15 terrain: dem", dem_tif, "GEM-15 DTM (test)")
+    names = [x.name for x in group.listLayers()]
+    assert names[0].startswith("dem LRM (250 m") and names[1].startswith("dem slope")
+    assert names[2].startswith("dem hillshade (multidirectional, altitude 30 deg")
+    assert names[3] == "GEM-15 DTM (test)"                     # DEM moved in, at the bottom
+    assert not group.listLayers()[1].visible                   # slope off
+    assert not group.listLayers()[3].visible                   # DEM off: hillshade hides it
+    # Again: the group is rebuilt (live layers store the source's extent, A15),
+    # with no second group and no stray copy of the DEM.
+    pyt.add_layer_files(m, files, "GEM-15 terrain: dem", dem_tif, "GEM-15 DTM (test)")
+    top = [x.name for x in m.listLayers() if "\\" not in x.longName]
+    assert top.count("GEM-15 terrain: dem") == 1 and "GEM-15 DTM (test)" not in top
+    # Tile edges: one outline per tile, with its cell id and zone.
+    tiles = stac.find_tiles(AOI, "dtm", collection_url=synthetic["collection_url"],
+                            fetch=stac.Fetcher(cache_dir=None))
+    gdb = arcpy.management.CreateFileGDB(str(tmp_path), "e.gdb").getOutput(0)
+    fc = pyt.update_tile_edges(tiles, "dtm", gdb)
+    pyt.update_tile_edges(tiles, "dtm", gdb)                    # again: no duplicates
+    rows = list(arcpy.da.SearchCursor(fc, ["cell_id", "utm_zone"]))
+    assert rows == [("w173sm42", "UTM 59S")]
 
 
 def test_save_derivatives(pyt, dem_tif, tmp_path):
@@ -353,7 +373,21 @@ def test_vrt_mode_across_zones(tb, catalogue, tmp_path):
     assert r.spatialReference.factoryCode == 2193
     a = arcpy.RasterToNumPyArray(r, nodata_to_value=np.nan)
     np.testing.assert_array_equal(a, gdal.Open(res.getOutput(1)).ReadAsArray())
-    assert np.isfinite(a).mean() > 0.95
+    # The VRT covers the tiles' whole 1-degree cells (as QGIS); within the
+    # requested extent the synthetic tiles fill it.
+    x0, y0, x1, y1 = gdalops.aoi_bounds_in("EPSG:2193", ACROSS)
+    ext = r.extent
+    c0, c1 = int((x0 - ext.XMin) / 15), int((x1 - ext.XMin) / 15)
+    r0, r1 = int((ext.YMax - y1) / 15), int((ext.YMax - y0) / 15)
+    assert np.isfinite(a[r0:r1, c0:c1]).mean() > 0.95
+
+
+def test_vrt_is_reused_and_named_after_tiles(tb, catalogue, tmp_path):
+    a = tb.AddGEM15ForExtent(lonlat_extent(AOI), "dtm", "VRT file", None, None, None,
+                             None, str(tmp_path)).getOutput(1)
+    b = tb.AddGEM15ForExtent(lonlat_extent((173.86, -41.77, 173.94, -41.73)), "dtm",
+                             "VRT file", None, None, None, None, str(tmp_path)).getOutput(1)
+    assert a == b and os.path.basename(a).startswith("gem15_dtm_w173sm42_1t_")
 
 
 def test_terrain_tool(tb, dem_tif, tmp_path):
@@ -364,10 +398,77 @@ def test_terrain_tool(tb, dem_tif, tmp_path):
     assert all(os.path.exists(f) for f in files)
 
 
-def test_mosaic_mode_needs_a_connection(tb, catalogue, tmp_path):
-    with pytest.raises(arcpy.ExecuteError):
+def test_mosaic_mode_makes_its_connection_but_needs_cloud_tiles(tb, catalogue, tmp_path):
+    """No .acs given: the tool makes one itself. The synthetic tiles are local
+    files, which a mosaic referencing the bucket cannot use: a clear error."""
+    with pytest.raises(arcpy.ExecuteError, match="Unexpected asset URL"):
         tb.AddGEM15ForExtent(lonlat_extent(AOI), "dtm", "Mosaic dataset", None,
                              str(tmp_path), "md")
+
+
+def test_terrain_tool_single_sun(tb, dem_tif, tmp_path, pyt):
+    """Across a N-S fault the sun shines from the west (270, the side nearer 315)."""
+    res = tb.TerrainStack(dem_tif, ["Hillshade (multidirectional)"], 300, 25,
+                          str(tmp_path), "Across a fault trend", None, 0, 2)
+    lyrx = res.getOutput(0)
+    assert os.path.basename(lyrx) == "dem_hillshade_az270_z2.lyrx"
+    name = json.load(open(lyrx, encoding="utf-8"))["layerDefinitions"][0]["name"]
+    assert "sun 270 deg" in name and "z 2" in name
+    hs = as_array(pyt.terrain_rasters(dem_tif, ["hillshade"], altitude=25, azimuth=270,
+                                      z=2)["hillshade"])
+    assert np.nanmax(hs) <= 255 and np.isfinite(hs).mean() > 0.9
+
+
+def test_current_view_tool_offline(tb, pyt, catalogue, tmp_path):
+    """The one-click tool with an extent (headless: no view), VRT output."""
+    res = tb.GEM15ForCurrentView("DTM (bare earth)",
+                                 ["Hillshade (multidirectional)", "Local relief model",
+                                  pyt.EDGES_LABEL], None, lonlat_extent(AOI), "VRT file")
+    outs = res.getOutput(0).split(";")
+    assert outs[0].endswith("_epsg32759.vrt") and os.path.exists(outs[0])
+    assert outs[1].endswith(pyt.TILE_EDGES_FC) and arcpy.Exists(outs[1])
+    assert [os.path.splitext(o)[1] for o in outs[2:]] == [".lyrx", ".lyrx"]
+    msgs = res.getMessages(0)
+    assert "1:50,000 and closer" in msgs and "machine learning" in msgs
+    with pytest.raises(arcpy.ExecuteError, match="one-degree cells"):     # too big a view
+        tb.GEM15ForCurrentView("DTM (bare earth)", None, None,
+                               lonlat_extent((165.0, -48.0, 179.0, -34.0)), "VRT file")
+
+
+def test_swath_profile_tool(tb, dem_tif, tmp_path):
+    """Across the synthetic DEM (tilted, wavy, with a NoData hole)."""
+    gdb = arcpy.management.CreateFileGDB(str(tmp_path), "p.gdb").getOutput(0)
+    sr = arcpy.SpatialReference(32755)
+    fc = arcpy.management.CreateFeatureclass(gdb, "line", "POLYLINE",
+                                             spatial_reference=sr).getOutput(0)
+    with arcpy.da.InsertCursor(fc, ["SHAPE@"]) as cur:
+        cur.insertRow([arcpy.Polyline(arcpy.Array([arcpy.Point(300600, 5998800),
+                                                   arcpy.Point(302700, 5998200)]), sr)])
+    res = tb.SwathProfile(fc, dem_tif, 150, str(tmp_path), "synthetic", 0, 400, 1600, 2100)
+    csv, png = res.getOutput(0), res.getOutput(1)
+    lines = open(csv, encoding="utf-8").read().splitlines()
+    data = [ln for ln in lines if not ln.startswith("#")]
+    assert data[0].startswith("distance_m") and len(data) > 100
+    assert any("Vertical separation" in ln for ln in lines)       # fit summary in the CSV
+    assert "Vertical separation" in res.getMessages(0)
+    assert png and os.path.getsize(png) > 1000
+    with pytest.raises(arcpy.ExecuteError, match="all four"):
+        tb.SwathProfile(fc, dem_tif, 150, str(tmp_path), "x", 0, 400)
+
+
+def test_canopy_raster(pyt, dem_tif, tmp_path):
+    """DSM - DTM > 3 m marks where the DTM is a guess (trees, buildings)."""
+    dtm = read_dem(dem_tif)
+    dsm = dtm.copy()
+    dsm[20:40, 50:80] += 12.0                                  # a 12 m "forest"
+    path = str(tmp_path / "dsm.tif")
+    src = gdal.Open(dem_tif)
+    out = gdal.GetDriverByName("GTiff").CreateCopy(path, src)
+    out.GetRasterBand(1).WriteArray(dsm.astype("float32"))
+    out = None
+    c = as_array(pyt.canopy_raster(path, dem_tif))
+    assert np.all(c[20:40, 50:80] == 1)
+    assert np.isnan(c[60:80, 50:80]).all()                      # bare ground: no mark
 
 
 def test_portable_vrt_sources_open_in_gdal(tmp_path, synthetic):

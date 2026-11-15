@@ -5,6 +5,10 @@
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# arcpy raises and handles native (C++) exceptions internally; with pytest's
+# faulthandler plugin on, a run of the arcpy tests exited with code -1 part
+# way through (2026-11-15, Pro 3.4), and passed with it off.
+addopts = "-p no:faulthandler"
 markers = [
     "live: reads the public GEM-15 bucket (set GEM15_LIVE=1 to run)",
     "arcpy: needs ArcGIS Pro's arcpy",

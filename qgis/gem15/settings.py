@@ -18,8 +18,9 @@ Choices (flagged; change here if they do not suit):
  P3. The live LRM layer is drawn only at 1:LRM_MAX_SCALE and closer. GDAL
      applies a VRT kernel filter only to full-resolution reads; zoomed out
      it would show raw elevation instead (checked on GDAL 3.6.4 and 3.9.2).
-     At 1:40,000 a screen pixel is 10.6 m at 96 dpi (finer than the 15 m
-     grid down to 68 dpi), so QGIS always reads native pixels.
+     At 1:50,000 a screen pixel is 13.2 m at 96 dpi (finer than the 15 m
+     grid down to 85 dpi), so QGIS reads native pixels. (1:40,000 until
+     2026-11-15; now the same as the ArcGIS toolbox.)
  P4. The LRM colour ramp spans +/- LRM_DISPLAY_RANGE_M, blue (low) to red
      (high); values beyond take the end colours.
 """
@@ -28,11 +29,15 @@ import os
 
 from qgis.core import QgsApplication, QgsProject, QgsSettings
 
+from .gem15core import terrain
+
 KEY = "gem15/"
 MAX_VIEW_CELLS = 36
 MAX_PROCESSING_CELLS = 1500
-LRM_MAX_SCALE = 40000.0
-LRM_DISPLAY_RANGE_M = 2.5
+# Shared with the ArcGIS toolbox (gem15core.terrain T5, T6), so both draw alike.
+LRM_MAX_SCALE = terrain.LRM_MAX_SCALE
+LRM_DISPLAY_RANGE_M = terrain.LRM_DISPLAY_RANGE_M
+LRM_OPACITY = 0.6               # as the ArcGIS layer (40 % transparent): hillshade shows through
 
 
 def value(name, default=None, type_=str):

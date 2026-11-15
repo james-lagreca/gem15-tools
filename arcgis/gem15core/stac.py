@@ -366,3 +366,32 @@ def group_by_epsg(tiles):
     for t in tiles:
         out.setdefault(t.epsg, []).append(t)
     return dict(sorted(out.items()))
+
+
+def tiles_bbox(tiles):
+    """Lon/lat box around the tiles' 1-degree cells, across 180 if need be:
+    a layer over whole tiles stays useful when panning nearby."""
+    pts = []
+    for t in tiles:
+        w, s, e, n = cells.parse_cell(t.cell_id) or t.bbox
+        # Points just inside each cell, so a cell ending at 180 is not read as -180.
+        pts += [(w + 1e-6, s), (e - 1e-6, n)]
+    w, s, e, n = extent.from_lonlat_points(pts)
+    return extent.check((round(w, 5), s, round(e, 5), n))
+
+
+def tiles_tag(tiles, product, band, extra=""):
+    """Short, stable file-name tag for a set of tiles, e.g. 'w144sm38_2t_1a2b3c4d':
+    the same tiles (and product, band, extra) always give the same tag."""
+    ids = ",".join(sorted(t.cell_id for t in tiles))
+    h = hashlib.sha1(f"{product}|{band}|{extra}|{ids}".encode("utf-8")).hexdigest()[:8]
+    return f"{min(t.cell_id for t in tiles)}_{len(tiles)}t_{h}"
+
+
+def tile_outline(tile, product="dtm", points_per_side=21):
+    """(epsg, ring) of a tile's true extent (not its 1-degree cell) in its own
+    UTM CRS: a closed, densified ring, for drawing tile edges, where seams
+    between acquisitions can mimic scarps."""
+    a = tile.asset(product)
+    x0, y0, x1, y1 = a.footprint()
+    return a.epsg, extent.densified_ring(x0, y0, x1, y1, points_per_side)

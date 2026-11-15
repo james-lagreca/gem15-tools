@@ -21,12 +21,11 @@ Behaviour (flagged):
      rather than rewritten, because QGIS (GDAL) may hold it open in a layer.
 """
 
-import hashlib
 import os
 from dataclasses import dataclass
 from typing import List, Optional
 
-from .gem15core import Gem15Error, cells, crs, extent, stac, terrain, vrt
+from .gem15core import Gem15Error, crs, stac, terrain, vrt
 
 KINDS = {
     # kind: (product, band, style, label)
@@ -52,27 +51,11 @@ class Plan:
     group: Optional[str] = None     # layer-tree group name when several layers
 
 
-def _tag(tiles, product, band, extra=""):
-    ids = ",".join(sorted(t.cell_id for t in tiles))
-    h = hashlib.sha1(f"{product}|{band}|{extra}|{ids}".encode("utf-8")).hexdigest()[:8]
-    first = min(t.cell_id for t in tiles)
-    return f"{first}_{len(tiles)}t_{h}"
-
-
-def tiles_bbox(tiles):
-    """Lon/lat box around the tiles' 1-degree cells (L1), across 180 if need be."""
-    pts = []
-    for t in tiles:
-        w, s, e, n = cells.parse_cell(t.cell_id) or t.bbox
-        # Points just inside each cell, so a cell ending at 180 is not read as -180.
-        pts += [(w + 1e-6, s), (e - 1e-6, n)]
-    w, s, e, n = extent.from_lonlat_points(pts)
-    return extent.check((round(w, 5), s, round(e, 5), n))
-
-
-def zone_label(epsg):
-    z = crs.utm_zone_of_epsg(epsg)
-    return f"UTM {z[0]}{z[1]}" if z else f"EPSG:{epsg}"
+# Shared with the ArcGIS toolbox (moved to gem15core 2026-11-15), so both name
+# and size their VRTs the same way (L1, L3).
+_tag = stac.tiles_tag
+tiles_bbox = stac.tiles_bbox
+zone_label = crs.zone_label
 
 
 def plan_layers(bbox, kind, folder, per_zone=False, fetch=None, collection_url=None,
