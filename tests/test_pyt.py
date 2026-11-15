@@ -5,6 +5,8 @@ import os
 import sys
 import types
 
+import pytest
+
 from conftest import ROOT
 from test_stac import FakeFetch, make_docs
 
@@ -56,7 +58,54 @@ def test_zone_checks(monkeypatch):
 def test_tool_definitions_import(monkeypatch):
     t = load_pyt(monkeypatch)
     tb = t.Toolbox()
-    assert tb.alias == "gem15" and t.AddGEM15ForExtent in tb.tools
+    assert tb.alias == "gem15"
+    assert tb.tools == [t.ConnectToGEM15, t.AddGEM15ForExtent, t.TerrainStack,
+                        t.ClipForAnalysis]
+    assert [c().label for c in tb.tools] == ["Connect to GEM-15", "Add GEM-15 For Extent",
+                                             "Terrain Stack (live)", "Clip for Analysis"]
+
+
+def test_derivative_choices(monkeypatch):
+    t = load_pyt(monkeypatch)
+    labels = t.DERIV_LABELS
+    # Any order in, drawing order out (hillshade at the bottom); Pro may quote values.
+    assert t.deriv_keys([labels[2], "'" + labels[0] + "'"]) == ["hillshade", "lrm"]
+    assert t.deriv_keys(["slope"]) == ["slope"] and t.deriv_keys(None) == []
+    assert t.layer_label("GEM15_dtm", "lrm", 250) == "GEM15_dtm LRM (250 m)"
+    assert "sun 30 deg" in t.layer_label("x", "hillshade")
+    assert t.file_suffix("lrm", 300.0) == "lrm300m" and t.file_suffix("slope") == "slope"
+    assert t.safe_name("GEM15 dtm (x)") == "GEM15_dtm__x"
+
+
+def test_circle_kernel_is_a_normalised_disc(monkeypatch):
+    t = load_pyt(monkeypatch)
+    k = t.circle_kernel(300, 15)
+    assert len(k) == len(k[0]) == 41                       # radius 20 px
+    assert sum(map(sum, k)) == pytest.approx(1.0)
+    assert k[20][20] > 0 and k[0][20] > 0 and k[0][0] == 0  # centre, edge, corner
+    nonzero = sum(v > 0 for row in k for v in row)
+    from gem15core import terrain
+    assert nonzero == len(terrain.circle_offsets(300, 15))
+
+
+def test_vrt_stem(monkeypatch):
+    t = load_pyt(monkeypatch)
+    assert t.vrt_stem((144.1, -37.52, 144.14, -37.49), "dtm") == \
+        "gem15_dtm_144p100_m37p520_144p140_m37p490"
+
+
+def test_layer_styles(monkeypatch):
+    t = load_pyt(monkeypatch)
+    for key in ("hillshade", "slope", "lrm"):
+        d = t.style_layer_json({"colorizer": {"type": "CIMRasterStretchColorizer",
+                                              "colorScheme": "Black to White"}}, key)
+        assert d["colorizer"]["statsType"] == "AreaOfView"          # DRA on every layer
+    lrm = t.style_layer_json({}, "lrm")
+    assert lrm["minScale"] == t.LIVE_LRM_MIN_SCALE and lrm["transparency"] == 40
+    ramp = lrm["colorizer"]["colorRamp"]
+    assert ramp["type"] == "CIMMultipartColorRamp" and len(ramp["colorRamps"]) == 2
+    assert t.style_layer_json({}, "slope")["visibility"] is False
+    assert "visibility" not in t.style_layer_json({}, "hillshade")
 
 
 def test_vendored_copies_are_current(monkeypatch):

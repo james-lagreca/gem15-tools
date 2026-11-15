@@ -34,6 +34,12 @@ def _read(path):
         return fh.read()
 
 
+def _same_text(path, text):
+    """True if a text file holds `text`, whatever its line endings: git
+    (text=auto) checks VENDORED.txt out with CRLF on Windows."""
+    return _read(path).replace(b"\r\n", b"\n") == text.encode("utf-8")
+
+
 def sync(check=False, targets=None):
     """Copy (or with check=True, only compare). Returns a list of problems found."""
     problems = []
@@ -55,7 +61,7 @@ def sync(check=False, targets=None):
                 if not check:
                     os.remove(os.path.join(target, name))
         note = os.path.join(target, NOTE_NAME)
-        if NOTE_NAME not in present or _read(note) != NOTE.encode("utf-8"):
+        if NOTE_NAME not in present or not _same_text(note, NOTE):
             problems.append(f"{rel}/{NOTE_NAME} missing or changed")
             if not check:
                 with open(note, "wb") as fh:

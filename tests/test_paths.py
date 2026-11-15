@@ -18,6 +18,14 @@ def test_gdal_path(tmp_path):
     assert paths.gdal_path("/data/x.tif") == "/data/x.tif"
 
 
+def test_portable_gdal_path(tmp_path):
+    p = paths.portable_gdal_path(URLS[0])
+    assert p.startswith("/vsicurl?list_dir=no&empty_dir=yes&url=https%3A%2F%2F")
+    assert p.endswith("w172sm42%2Fdtm%2Fzall%2Fmosaic.tif")
+    local = tmp_path / "a.tif"                  # local files are left as plain paths
+    assert paths.portable_gdal_path(local.as_uri()) == paths.gdal_path(local.as_uri())
+
+
 def test_cloud_paths_with_folder_in_connection():
     acs = os.path.join("C:" + os.sep, "proj", "gem15.acs")
     existing = {os.path.join(acs, "m50_p170", "w172sm42", "dtm", "zall", "mosaic.tif")}

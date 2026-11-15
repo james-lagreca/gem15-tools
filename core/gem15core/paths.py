@@ -11,6 +11,13 @@ Assumption P1: the .acs connection points at bucket "climate-and-sustainability"
 If it was made with folder "gem-15", paths start at the group; if it was made
 with no folder, they start with "gem-15". `cloud_paths` tests which by asking
 whether the first path exists.
+
+Assumption P2: GDAL (>= 2.3) reads options written into a "/vsicurl?" path
+itself, so a VRT whose sources carry them opens quickly in any program and
+any later session, with no GDAL configuration. list_dir=no and empty_dir=yes
+stop GDAL listing the bucket "folder" to look for side-car files. Checked
+2026-11-15 in headless arcpy (Pro 3.4): same pixels, about 1.5 s quicker to
+open per source.
 """
 
 import os
@@ -27,6 +34,24 @@ def gdal_path(href):
     if href.startswith("file:"):
         return urllib.request.url2pathname(urllib.parse.urlparse(href).path)
     return href
+
+
+VSICURL_OPTIONS = (("list_dir", "no"), ("empty_dir", "yes"))
+
+
+def portable_gdal_path(href):
+    """Like gdal_path, but with the GDAL options in the path itself (P2):
+    "/vsicurl?list_dir=no&empty_dir=yes&url=<URL-encoded href>".
+    Use it for VRTs that other programs (ArcGIS Pro, QGIS) or later sessions open.
+
+    GDAL rejects every "/vsicurl?" path while CPL_VSIL_CURL_ALLOWED_EXTENSIONS
+    is set for it (checked 2026-11-15, GDAL 3.9), so open such VRTs where
+    that option is unset or scoped to "/vsicurl/" paths only.
+    """
+    if href.startswith(("http://", "https://")):
+        opts = "&".join(f"{k}={v}" for k, v in VSICURL_OPTIONS)
+        return f"/vsicurl?{opts}&url={urllib.parse.quote(href, safe='')}"
+    return gdal_path(href)
 
 
 def bucket_parts(url):

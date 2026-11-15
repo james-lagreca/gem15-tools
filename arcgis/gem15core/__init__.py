@@ -16,6 +16,7 @@ paths    : asset URL -> GDAL /vsicurl/ path or ArcGIS .acs path
 crs      : UTM helpers and the automatic choice of a projected CRS
 terrain  : default settings for hillshade, slope and local relief
 vrt      : write a GDAL VRT straight from catalogue metadata (no GDAL needed)
+download : estimate how much a clip will download, before reading anything
 gdalops  : GDAL-based warp and clip (optional; needs osgeo)
 
 Copies of this package live inside the ArcGIS toolbox and QGIS plugin
