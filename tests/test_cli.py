@@ -84,11 +84,11 @@ def test_dsm_band(synthetic, tmp_path):
 def test_clip_and_per_zone(synthetic, tmp_path):
     vrt = build(synthetic, CROSS, tmp_path / "auto.vrt")
     tif = gdalops.clip_to_geotiff(vrt, str(tmp_path / "clip.tif"), log=None)
-    # GDAL's warper gives slightly different values for the same pixel
-    # depending on how a read is chunked, even with the exact transformer
-    # (reproduced with a plain GeoTIFF source): < 0.1 m here on a surface that
-    # climbs 18 m per pixel; ~0.9 m with GDAL's default approximation (G3).
-    assert abs(sample(tif, 174.01, -41.73) - sample(vrt, 174.01, -41.73)) < 0.25
+    # The same pixel read on screen and in a clip of the same VRT (G3). With
+    # GDAL's default approximation it differed by ~0.9 m on this surface that
+    # climbs 18 m per pixel; with the exact transformer < 0.1 m; with the
+    # kernel scale also fixed (XSCALE/YSCALE=1) not at all.
+    assert sample(tif, 174.01, -41.73) == sample(vrt, 174.01, -41.73)
     zp = build(synthetic, CROSS, tmp_path / "pz.vrt", per_zone=True)
     assert [epsg_of(p) for p in zp] == ["32759", "32760"]
     src_b = synthetic["tiles_dir"] / "w174sm42_dtm.tif"

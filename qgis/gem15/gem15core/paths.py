@@ -17,7 +17,10 @@ itself, so a VRT whose sources carry them opens quickly in any program and
 any later session, with no GDAL configuration. list_dir=no and empty_dir=yes
 stop GDAL listing the bucket "folder" to look for side-car files. Checked
 2026-11-15 in headless arcpy (Pro 3.4): same pixels, about 1.5 s quicker to
-open per source.
+open per source. They do NOT stop GDAL 3.9 probing 7 side-car names per tile
+(.aux.xml, .aux, .AUX, .tif.aux, .tif.AUX, .xml, .XML), each an HTTP 404:
+only CPL_VSIL_CURL_ALLOWED_EXTENSIONS does that, and it cannot go in a path
+(checked 2026-11-15, osgeo GDAL 3.9.2, 32 tiles: 225 probes either way).
 """
 
 import os

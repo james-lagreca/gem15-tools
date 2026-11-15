@@ -92,15 +92,25 @@ def _cog_like(path, epsg, box):
     return (N, N), (15.0, 0.0, xmin, 0.0, -15.0, ymax)
 
 
-def test_warped_zoomed_out_read_uses_overviews(served, tmp_path):
-    base, root, sent = served
+def _served_tiles(base, root):
+    """The BOXES tiles on the local server (written once), as catalogue Tiles."""
     tiles = []
     for cell, (epsg, box) in BOXES.items():
         tif = root / f"{cell}.tif"
-        shape, tr = _cog_like(tif, epsg, box)
+        if tif.exists():
+            xmin, _, _, ymax = gdalops.aoi_bounds_in(f"EPSG:{epsg}", box)
+            shape, tr = (N, N), (15.0, 0.0, xmin, 0.0, -15.0, ymax)
+        else:
+            shape, tr = _cog_like(tif, epsg, box)
         a = stac.Asset(base + tif.name, epsg, shape, tr, ("dtm",))
         tiles.append(stac.Tile("gem-15_" + cell, cell, "m50_p170", cells.parse_cell(cell),
                                epsg, "", {"dtm": a}))
+    return tiles
+
+
+def test_warped_zoomed_out_read_uses_overviews(served, tmp_path):
+    base, root, sent = served
+    tiles = _served_tiles(base, root)
     full = sum(os.path.getsize(root / f"{c}.tif") for c in BOXES)
     # No configure_remote() here: with GDAL_DISABLE_READDIR_ON_OPEN, GDAL 3.9.2
     # fetches whole files from this simple test server (not from Google's: see
@@ -121,6 +131,57 @@ def test_warped_zoomed_out_read_uses_overviews(served, tmp_path):
     # Without the overview list this read sent ~50 % of the files; with it ~1 %.
     assert sent["bytes"] < 0.1 * full, (
         f"1/16 read sent {sent['bytes'] / 1e6:.1f} MB of {full / 1e6:.1f} MB: overviews unused")
+
+
+def test_each_zone_warp_covers_only_its_tiles(served, tmp_path):
+    """gdalops G5: a zone's warp stops at its own tiles, so a read elsewhere
+    does not run it; pixels match the old whole-area warps. With portable=True
+    the zone VRTs carry the GDAL options in their paths (for ArcGIS Pro)."""
+    from gem15core import vrt
+    base, root, _ = served
+    tiles = _served_tiles(base, root)
+    bbox, dst = (173.35, -41.85, 174.30, -41.65), "EPSG:2193"
+    out = gdalops.build_vrt(bbox, str(tmp_path / "new.vrt"), dst_crs=dst, tiles=tiles,
+                            log=None, portable=True)
+    top = gdal.Open(out)
+    for z in (32759, 32760):
+        w = gdal.Open(str(tmp_path / f"new_epsg{z}_to_EPSG_2193.vrt"))
+        assert w.RasterXSize < 0.8 * top.RasterXSize, z            # not the whole area
+        with open(tmp_path / f"new_epsg{z}.vrt", encoding="utf-8") as fh:
+            assert "/vsicurl?list_dir=no&amp;empty_dir=yes&amp;url=http" in fh.read()
+    # The old way: every zone warped over the whole area.
+    bounds = gdalops.aoi_bounds_in(dst, bbox)
+    old = []
+    for z in (32759, 32760):
+        zt = [t for t in tiles if t.epsg == z]
+        zv = vrt.write_vrt(zt, "dtm", tmp_path / f"old_{z}.vrt",
+                           bounds=gdalops.aoi_bounds_in(f"EPSG:{z}", bbox)).path
+        old.append(str(tmp_path / f"old_{z}_w.vrt"))
+        gdal.Warp(old[-1], zv, options=gdal.WarpOptions(
+            format="VRT", dstSRS=dst, outputBounds=bounds, xRes=15, yRes=15,
+            targetAlignedPixels=True, resampleAlg="bilinear", srcNodata="nan",
+            dstNodata="nan", errorThreshold=0, warpOptions=list(gdalops.WARP_OPTIONS)))
+    gdal.BuildVRT(str(tmp_path / "old.vrt"), old, options=gdal.BuildVRTOptions(
+        srcNodata="nan", VRTNodata="nan"))
+    ref = gdal.Open(str(tmp_path / "old.vrt"))
+    assert ref.GetGeoTransform() == top.GetGeoTransform()
+    assert (ref.RasterXSize, ref.RasterYSize) == (top.RasterXSize, top.RasterYSize)
+    # Window across the zone boundary (174 E). The "/vsicurl?" form opens only
+    # without a process-wide CPL_VSIL_CURL_ALLOWED_EXTENSIONS (paths P2).
+    from osgeo import osr
+    x = osr.CoordinateTransformation(gdalops.srs("EPSG:4326"),
+                                     gdalops.srs(dst)).TransformPoint(174.0, -41.75)[0]
+    col = int((x - top.GetGeoTransform()[0]) / 15)
+    win = (col - 400, 0, 800, top.RasterYSize)
+    old_opt = gdal.GetConfigOption("CPL_VSIL_CURL_ALLOWED_EXTENSIONS")
+    gdal.SetConfigOption("CPL_VSIL_CURL_ALLOWED_EXTENSIONS", None)
+    try:
+        a = top.GetRasterBand(1).ReadAsArray(*win)
+        b = ref.GetRasterBand(1).ReadAsArray(*win)
+    finally:
+        gdal.SetConfigOption("CPL_VSIL_CURL_ALLOWED_EXTENSIONS", old_opt)
+    assert np.isfinite(a).mean() > 0.5
+    np.testing.assert_array_equal(a, b)
 
 
 @pytest.mark.live

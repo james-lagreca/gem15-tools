@@ -383,10 +383,12 @@ def write_vrt_for_extent(bbox, tiles, product, band, folder, sr=None, log=None):
     One UTM zone (and sr blank or that zone): the tiles' native grid, written
     from catalogue metadata alone, with the GDAL options in each source path
     (gem15core.paths P2) so Pro opens it quickly in any session.
-    Otherwise GDAL warps to `sr` or the automatic CRS (A6). Those VRTs keep
-    plain /vsicurl/ sources: while gdalops.configure_remote sets
-    CPL_VSIL_CURL_ALLOWED_EXTENSIONS for the whole process, GDAL cannot open
-    the "/vsicurl?" form, and the warp has to open the sources.
+    Otherwise GDAL warps to `sr` or the automatic CRS (A6), each zone's warp
+    covering only its own tiles (gdalops G5), with the same source paths.
+    Without our GDAL settings (which Pro's drawing never gets) GDAL still
+    probes 7 side-car files per tile on first use (gem15core.paths P2), so
+    the first zoomed-out draw of a large area is slow: about 90 s for 32
+    tiles over 7 x 4 degrees, checked 2026-11-15 with GDAL 3.9.2.
     """
     from gem15core import gdalops                      # needs GDAL (osgeo)
     out = os.path.join(folder, vrt_stem(bbox, band or product) + ".vrt")
@@ -402,7 +404,8 @@ def write_vrt_for_extent(bbox, tiles, product, band, folder, sr=None, log=None):
                 log(f"Wrote {info.path} ({info.cols} x {info.rows} px, native EPSG:{epsg}, "
                     "nothing resampled)")
             return info.path
-    return gdalops.build_vrt(bbox, out, product, band, dst_crs=dst, tiles=tiles, log=log)
+    return gdalops.build_vrt(bbox, out, product, band, dst_crs=dst, tiles=tiles, log=log,
+                             portable=True)
 
 
 # --------------------------------------------------------------------------

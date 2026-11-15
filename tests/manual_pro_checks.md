@@ -24,6 +24,11 @@ example around 144.1 E, 37.5 S.
    layer draw in the map view, and how fast at different zooms? Try one
    area across UTM zones too (for example NZ at 174 E, or central Australia
    at 132 E), which gives a warped VRT.
+   2026-11-15: draws, but slower than the mosaic (138-145 E, 35-39 S, three
+   zones). Since then each zone's warp covers only its own tiles, which
+   halved repeat draws in GDAL (2.8 s to 1.3 s per screen). Re-run the
+   tool to make a new VRT and compare. The first zoomed-out draw is still
+   slow (GDAL probes 7 side-file names per tile; ~90 s for 32 tiles).
 5. **Separate layers**: the layers should arrive with DRA on (Symbology >
    Statistics: DRA).
 6. **Terrain Stack (live)** on the mosaic layer, then on the VRT layer.

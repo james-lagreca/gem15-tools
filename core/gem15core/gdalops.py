@@ -11,10 +11,13 @@ Assumptions (flagged):
      first and then warped (bilinear by default) onto a 15 m grid in the
      target CRS. Warping resamples: avoid it for quantitative work by
      choosing a single-zone area or one layer per zone.
- G3. Warps use the exact coordinate transformer (error threshold 0). GDAL's
-     default approximates it to 1/8 pixel (about 2 m here), and the result
-     then depends on how a read is chunked: the same pixel came out up to
-     0.8 m different on screen and in a clip of the same VRT.
+ G3. Warps use the exact coordinate transformer (error threshold 0) and a
+     resampling kernel scale fixed at 1 (XSCALE/YSCALE, WARP_OPTIONS). GDAL's
+     defaults approximate the transformer to 1/8 pixel and work the kernel
+     scale out per processing chunk, so the same pixel came out up to 0.8 m
+     different on screen and in a clip of the same VRT (and still < 0.1 m
+     with the exact transformer alone). With both, a clip and the screen
+     agree exactly (checked 2026-11-15, GDAL 3.9.2 and 3.6.4/QGIS).
  G4. Set process-wide, GDAL_DISABLE_READDIR_ON_OPEN=EMPTY_DIR stops GDAL
      finding side-car files (.ovr, .aux.xml, world files) of every other
      raster, and CPL_VSIL_CURL_ALLOWED_EXTENSIONS=.tif hides any other remote
@@ -25,13 +28,19 @@ Assumptions (flagged):
      probes per remote tile and leaves a local .ovr visible.
      GDAL_HTTP_USERAGENT is honoured only process-wide, so scoped mode sends
      GDAL's default (no User-Agent header): still no user details.
+ G5. In a warped VRT each zone's native VRT and warp cover only that zone's
+     tiles (within the area), not the whole area. GDAL then runs a zone's
+     warper only where it has data. Before, every read ran all of them:
+     over 7 x 4 degrees of SA/Victoria (3 zones), the two empty warpers took
+     60 % of a warm full-resolution 1600 x 1000 px read (checked 2026-11-15,
+     GDAL 3.9.2). The exact transformer (G3) keeps pixel values unchanged.
 """
 
 import os
 
 from osgeo import gdal, osr
 
-from . import BUCKET_URL, PIXEL_M, USER_AGENT, Gem15Error, crs, extent, stac, vrt
+from . import BUCKET_URL, PIXEL_M, USER_AGENT, Gem15Error, crs, extent, paths, stac, vrt
 
 gdal.UseExceptions()
 
@@ -44,6 +53,10 @@ REMOTE_GDAL_CONFIG = {
     "VSI_CACHE": "TRUE",
 }
 
+
+# G3: 15 m to 15 m, so the resampling kernel's scale is fixed at 1 instead of
+# being worked out per processing chunk (which made values chunk-dependent).
+WARP_OPTIONS = ("XSCALE=1", "YSCALE=1")
 
 # Options that would change how GDAL opens anything else if set process-wide (G4).
 _BUCKET_ONLY = ("GDAL_DISABLE_READDIR_ON_OPEN", "CPL_VSIL_CURL_ALLOWED_EXTENSIONS")
@@ -93,9 +106,34 @@ def aoi_bounds_in(crs_input, bbox, densify=21, snap=PIXEL_M):
     return vrt.snap_bounds((min(xs), min(ys), max(xs), max(ys)), snap)
 
 
+def bounds_between(bounds, src_crs, dst_crs, densify=21, snap=PIXEL_M):
+    """Project (xmin, ymin, xmax, ymax) from one projected CRS to another along
+    its densified outline; return the enclosing bounds snapped outwards."""
+    ct = osr.CoordinateTransformation(srs(src_crs), srs(dst_crs))
+    x0, y0, x1, y1 = bounds
+    xy = [ct.TransformPoint(x, y)[:2] for x, y in extent.densified_ring(x0, y0, x1, y1, densify)]
+    xs, ys = [p[0] for p in xy], [p[1] for p in xy]
+    return vrt.snap_bounds((min(xs), min(ys), max(xs), max(ys)), snap)
+
+
+def _intersect(a, b):
+    """Overlap of two (xmin, ymin, xmax, ymax) boxes, or None."""
+    box = (max(a[0], b[0]), max(a[1], b[1]), min(a[2], b[2]), min(a[3], b[3]))
+    return box if box[0] < box[2] and box[1] < box[3] else None
+
+
+def zone_bounds(epsg, ztiles, bbox, product="dtm"):
+    """The area (lon/lat bbox) within one zone's tiles, in that zone's CRS (G5);
+    None if they do not meet."""
+    fps = [t.asset(product).footprint() for t in ztiles]
+    union = (min(f[0] for f in fps), min(f[1] for f in fps),
+             max(f[2] for f in fps), max(f[3] for f in fps))
+    return _intersect(aoi_bounds_in(f"EPSG:{epsg}", bbox), union)
+
+
 def build_vrt(bbox, out_vrt, product="dtm", band_name=None, dst_crs=None,
               resample="bilinear", per_zone=False, tiles=None, fetch=None,
-              collection_url=None, log=print):
+              collection_url=None, log=print, portable=False):
     """Build a VRT over the GEM-15 tiles covering bbox (W, S, E, N degrees).
 
     dst_crs  : None or "auto" -> automatic choice (crs.auto_crs): native grid in
@@ -106,6 +144,10 @@ def build_vrt(bbox, out_vrt, product="dtm", band_name=None, dst_crs=None,
                no resampling; returns the list of paths.
     tiles    : tiles already found (skips the catalogue lookup).
     log      : callable for progress messages (None for silence).
+    portable : write tile paths with their GDAL options in them
+               (paths.portable_gdal_path), for VRTs that another program or a
+               later session opens without our GDAL settings (ArcGIS Pro).
+               Leave False for VRTs read in this process: see that function.
     Returns the output path (or list of paths if per_zone).
     """
     log = log or (lambda *_: None)
@@ -125,10 +167,12 @@ def build_vrt(bbox, out_vrt, product="dtm", band_name=None, dst_crs=None,
 
     out_vrt = os.path.abspath(out_vrt)
     stem = os.path.splitext(out_vrt)[0]
+    path_for = paths.portable_gdal_path if portable else paths.gdal_path
 
-    def native(epsg, ztiles, dest):
+    def native(epsg, ztiles, dest, bounds=None):
         info = vrt.write_vrt(ztiles, product, dest, band_name,
-                             bounds=aoi_bounds_in(f"EPSG:{epsg}", bbox))
+                             bounds=bounds or aoi_bounds_in(f"EPSG:{epsg}", bbox),
+                             path_for=path_for)
         log(f"Wrote {dest} ({info.cols} x {info.rows} px, native EPSG:{epsg})")
         return info
 
@@ -149,20 +193,28 @@ def build_vrt(bbox, out_vrt, product="dtm", band_name=None, dst_crs=None,
             return out_vrt
 
     # G2: native mosaic per zone, then a warped VRT per zone, then one mosaic.
+    # G5: each zone's VRT and warp cover only that zone's tiles in the area.
     bounds = aoi_bounds_in(dst, bbox)
     tag = "".join(ch if ch.isalnum() else "_" for ch in dst)[:40].strip("_")
     warped = []
     for z, zt in zones.items():
-        zone_vrt = native(z, zt, f"{stem}_epsg{z}.vrt").path
+        zb = zone_bounds(z, zt, bbox, product)
+        wb = zb and _intersect(bounds_between(zb, f"EPSG:{z}", dst), bounds)
+        if wb is None:
+            log(f"EPSG:{z}: its tiles do not reach the area; skipped.")
+            continue
+        zone_vrt = native(z, zt, f"{stem}_epsg{z}.vrt", zb).path
         wv = f"{stem}_epsg{z}_to_{tag}.vrt"
         gdal.Warp(wv, zone_vrt, options=gdal.WarpOptions(
-            format="VRT", dstSRS=dst, outputBounds=bounds,
+            format="VRT", dstSRS=dst, outputBounds=wb,
             xRes=PIXEL_M, yRes=PIXEL_M, targetAlignedPixels=True,
             resampleAlg=resample, srcNodata="nan", dstNodata="nan",
-            errorThreshold=0))                                   # G3
+            errorThreshold=0, warpOptions=list(WARP_OPTIONS)))    # G3
         warped.append(wv)
+    if not warped:
+        raise Gem15Error(f"No GEM-15 tiles reach {bbox}.")
     gdal.BuildVRT(out_vrt, warped, options=gdal.BuildVRTOptions(
-        srcNodata="nan", VRTNodata="nan"))
+        outputBounds=bounds, srcNodata="nan", VRTNodata="nan"))
     ds = gdal.Open(out_vrt, gdal.GA_Update)
     ds.GetRasterBand(1).SetDescription(f"GEM-15 {band_name or product} (m, EGM96)")
     ds = None

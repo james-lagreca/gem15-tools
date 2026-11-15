@@ -37,7 +37,10 @@ map view are listed in `tests/manual_pro_checks.md`; QGIS 4 is untested.
      GDA2020 / GA LCC (EPSG 7845).
    - *Separate layers* (any licence): one layer per tile.
    - *VRT file* (any licence, no `.acs`): a small GDAL VRT that streams the
-     tiles over https.
+     tiles over https. In Pro it draws more slowly than a mosaic dataset,
+     above all the first zoomed-out view of a large area across UTM zones
+     (GDAL checks each tile for side files it does not have). With a
+     Standard or Advanced licence, use a mosaic dataset for large areas.
 
    Leave the coordinate system blank for the automatic choice: the tiles'
    own UTM zone when they share one (nothing resampled), else GDA2020 / GA
