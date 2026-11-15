@@ -25,7 +25,7 @@ Copies of this package live inside the ArcGIS toolbox and QGIS plugin
 folders. Edit `core/gem15core/` only, then run `python tools/vendor_core.py`.
 """
 
-__version__ = "0.1.0.dev0"
+__version__ = "0.1.0"           # keep in step with qgis/gem15/metadata.txt
 
 # Where the data live (checked against the live catalogue on 2026-11-15).
 BUCKET = "climate-and-sustainability"

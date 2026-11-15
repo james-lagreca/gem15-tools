@@ -1,102 +1,102 @@
-<?xml version='1.0' encoding='UTF-8'?>
+<?xml version="1.0" encoding="UTF-8"?>
 <metadata xml:lang="en">
-  <Esri>
-    <ArcGISFormat>1.0</ArcGISFormat>
-    <SyncOnce>TRUE</SyncOnce>
-  </Esri>
-  <tool name="GEM15ForCurrentView" displayname="GEM-15 for Current View" toolboxalias="gem15" xmlns="">
-    <parameters>
-      <param name="product" displayname="Elevation" type="Required" direction="Input" datatype="GPString">
-        <dialogReference>
-          <para>DTM: the bare-ground surface, predicted by machine learning; use it for fault mapping. DSM: the top of trees and buildings (five bands, about five times the data to stream).</para>
-        </dialogReference>
-      </param>
-      <param name="layers" displayname="Layers" type="Optional" direction="Input" datatype="GPString">
-        <dialogReference>
-          <para>Hillshade (lit from the chosen sun), slope in degrees (added switched off) and local relief model (LRM: height above or below the local mean, blue to red over +/- 2.5 m). Canopy check: green where the DSM is over 3 m above the DTM, i.e. where the DTM is the model's guess (streams the DSM too). Tile edges: outlines of the tiles, where seams may be.</para>
-        </dialogReference>
-      </param>
-      <param name="lrm_radius" displayname="LRM Radius" type="Optional" direction="Input" datatype="GPString">
-        <dialogReference>
-          <para>Each pixel's height minus the mean height within this distance. Smaller radii show narrow features: 150 m for offset channels and narrow scarps, 300 m for scarps tens of metres wide, 1000 m for broad scarps and fold scarps (slow when live).</para>
-        </dialogReference>
-      </param>
-      <param name="extent" displayname="Extent" type="Optional" direction="Input" datatype="GPExtent">
-        <dialogReference>
-          <para>Area to cover. Leave blank for the current map view.</para>
-        </dialogReference>
-      </param>
-      <param name="mode" displayname="Output Type" type="Optional" direction="Input" datatype="GPString">
-        <dialogReference>
-          <para>Automatic: a mosaic dataset with a Standard or Advanced licence, a VRT file with Basic. A mosaic dataset is quicker to draw; a VRT file is one small file that works with any licence.</para>
-        </dialogReference>
-      </param>
-      <param name="sr" displayname="Coordinate System" type="Optional" direction="Input" datatype="GPSpatialReference">
-        <dialogReference>
-          <para>Leave blank so tiles in one UTM zone keep their own 15 m grid. Across zones the tool picks GDA2020 / GA LCC (Australia), NZTM2000 (New Zealand) or a projection centred on your area. Choose a projected system in metres, never degrees.</para>
-        </dialogReference>
-      </param>
-      <param name="illumination" displayname="Illumination" type="Optional" direction="Input" datatype="GPString">
-        <dialogReference>
-          <para>Multidirectional lights the surface from several directions, so no scarp orientation is hidden. A single sun, or one shining across a fault trend, gives scarps facing it up to three times the contrast.</para>
-        </dialogReference>
-      </param>
-      <param name="azimuth" displayname="Sun Azimuth (degrees)" type="Optional" direction="Input" datatype="GPDouble">
-        <dialogReference>
-          <para>Direction the sun shines from, in degrees clockwise from north (for a single sun). 315 (north-west) is usual.</para>
-        </dialogReference>
-      </param>
-      <param name="fault_trend" displayname="Fault Trend (degrees)" type="Optional" direction="Input" datatype="GPDouble">
-        <dialogReference>
-          <para>Trend of the fault you are mapping, in degrees (either direction along it, e.g. 30 for a NNE-SSW fault). The sun is put at right angles to it, on the side nearer north-west, so relief does not look inverted.</para>
-        </dialogReference>
-      </param>
-      <param name="altitude" displayname="Sun Altitude (degrees)" type="Optional" direction="Input" datatype="GPDouble">
-        <dialogReference>
-          <para>Height of the sun above the horizon, in degrees. A low sun brings out low scarps: about 20 on plains, 30-35 in steep country.</para>
-        </dialogReference>
-      </param>
-      <param name="z_factor" displayname="Vertical Exaggeration" type="Optional" direction="Input" datatype="GPDouble">
-        <dialogReference>
-          <para>Vertical exaggeration of the hillshade. 1 shows true relief; 2-3 brings out subtle scarps on Australian plains, along with the DTM's noise.</para>
-        </dialogReference>
-      </param>
-      <param name="out_paths" displayname="Outputs" type="Derived" direction="Output" datatype="GPString">
-        <dialogReference>
-          <para>The elevation source, tile edges and layer files written.</para>
-        </dialogReference>
-      </param>
-    </parameters>
-    <summary>
-      <para>Add GEM-15 elevation for the current map view in one step: a live hillshade and local relief model in a group, and the tile edges. Zoom to your area and press Run; nothing is downloaded beyond what is drawn.</para>
-    </summary>
-    <usage>
-      <bullet_item>Works for views up to 6 x 6 degrees; use Add GEM-15 for Extent for more.</bullet_item>
-      <bullet_item>With a Standard or Advanced licence the elevation is a mosaic dataset; with Basic, a VRT file. Both stream from Google's public bucket; no account needed.</bullet_item>
-      <bullet_item>The local relief model is drawn at 1:50,000 and closer: zoom in to see it.</bullet_item>
-      <bullet_item>The DTM is predicted by machine learning: unreliable under trees and buildings (the canopy check shows where). Straight features along tile edges may be seams, not scarps. Heights are on the EGM96 geoid, not AHD.</bullet_item>
-      <bullet_item>Credit: Elevation: GEM-15, produced by Google (CC BY 4.0). Cite Batchu et al. (2026), doi:10.31223/X55N75.</bullet_item>
-    </usage>
-  </tool>
-  <dataIdInfo>
-    <idCitation>
-      <resTitle>GEM-15 for Current View</resTitle>
-    </idCitation>
-    <idPurp>Add GEM-15 elevation for the current map view in one step: a live hillshade and local relief model in a group, and the tile edges. Zoom to your area and press Run; nothing is downloaded beyond what is drawn.</idPurp>
-    <searchKeys>
-      <keyword>GEM-15</keyword>
-      <keyword>elevation</keyword>
-      <keyword>DEM</keyword>
-      <keyword>active faults</keyword>
-      <keyword>hillshade</keyword>
-    </searchKeys>
-  </dataIdInfo>
-  <distInfo>
-    <distFormat>
-      <formatName>ArcToolbox Tool</formatName>
-    </distFormat>
-  </distInfo>
-  <mdHrLv>
-    <ScopeCd value="005" />
-  </mdHrLv>
+	<Esri>
+		<ArcGISFormat>1.0</ArcGISFormat>
+		<SyncOnce>TRUE</SyncOnce>
+	</Esri>
+	<tool name="GEM15ForCurrentView" displayname="GEM-15 for Current View" toolboxalias="gem15" xmlns="">
+		<parameters>
+			<param name="product" displayname="Elevation" type="Required" direction="Input" datatype="GPString">
+				<dialogReference>
+					<para>DTM: the bare-ground surface, predicted by machine learning; use it for fault mapping. DSM: the top of trees and buildings (five bands, about five times the data to stream).</para>
+				</dialogReference>
+			</param>
+			<param name="layers" displayname="Layers" type="Optional" direction="Input" datatype="GPString">
+				<dialogReference>
+					<para>Hillshade (lit from the chosen sun), slope in degrees (added switched off) and local relief model (LRM: height above or below the local mean, blue to red over +/- 2.5 m). Canopy check: green where the DSM is over 3 m above the DTM, i.e. where the DTM is the model's guess (streams the DSM too). Tile edges: outlines of the tiles, where seams may be.</para>
+				</dialogReference>
+			</param>
+			<param name="lrm_radius" displayname="LRM Radius" type="Optional" direction="Input" datatype="GPString">
+				<dialogReference>
+					<para>Each pixel's height minus the mean height within this distance. Smaller radii show narrow features: 150 m for offset channels and narrow scarps, 300 m for scarps tens of metres wide, 1000 m for broad scarps and fold scarps (slow when live).</para>
+				</dialogReference>
+			</param>
+			<param name="extent" displayname="Extent" type="Optional" direction="Input" datatype="GPExtent">
+				<dialogReference>
+					<para>Area to cover. Leave blank for the current map view.</para>
+				</dialogReference>
+			</param>
+			<param name="mode" displayname="Output Type" type="Optional" direction="Input" datatype="GPString">
+				<dialogReference>
+					<para>Automatic: a mosaic dataset with a Standard or Advanced licence, a VRT file with Basic. A mosaic dataset is quicker to draw; a VRT file is one small file that works with any licence.</para>
+				</dialogReference>
+			</param>
+			<param name="sr" displayname="Coordinate System" type="Optional" direction="Input" datatype="GPSpatialReference">
+				<dialogReference>
+					<para>Leave blank so tiles in one UTM zone keep their own 15 m grid. Across zones the tool picks GDA2020 / GA LCC (Australia), NZTM2000 (New Zealand) or a projection centred on your area. Choose a projected system in metres, never degrees.</para>
+				</dialogReference>
+			</param>
+			<param name="illumination" displayname="Illumination" type="Optional" direction="Input" datatype="GPString">
+				<dialogReference>
+					<para>Multidirectional lights the surface from several directions, so no scarp orientation is hidden. A single sun, or one shining across a fault trend, gives scarps facing it up to three times the contrast.</para>
+				</dialogReference>
+			</param>
+			<param name="azimuth" displayname="Sun Azimuth (degrees)" type="Optional" direction="Input" datatype="GPDouble">
+				<dialogReference>
+					<para>Direction the sun shines from, in degrees clockwise from north (for a single sun). 315 (north-west) is usual.</para>
+				</dialogReference>
+			</param>
+			<param name="fault_trend" displayname="Fault Trend (degrees)" type="Optional" direction="Input" datatype="GPDouble">
+				<dialogReference>
+					<para>Trend of the fault you are mapping, in degrees (either direction along it, e.g. 30 for a NNE-SSW fault). The sun is put at right angles to it, on the side nearer north-west, so relief does not look inverted.</para>
+				</dialogReference>
+			</param>
+			<param name="altitude" displayname="Sun Altitude (degrees)" type="Optional" direction="Input" datatype="GPDouble">
+				<dialogReference>
+					<para>Height of the sun above the horizon, in degrees. A low sun brings out low scarps: about 20 on plains, 30-35 in steep country.</para>
+				</dialogReference>
+			</param>
+			<param name="z_factor" displayname="Vertical Exaggeration" type="Optional" direction="Input" datatype="GPDouble">
+				<dialogReference>
+					<para>Vertical exaggeration of the hillshade. 1 shows true relief; 2-3 brings out subtle scarps on Australian plains, along with the DTM's noise.</para>
+				</dialogReference>
+			</param>
+			<param name="out_paths" displayname="Outputs" type="Derived" direction="Output" datatype="GPString">
+				<dialogReference>
+					<para>The elevation source, tile edges and layer files written.</para>
+				</dialogReference>
+			</param>
+		</parameters>
+		<summary>
+			<para>Add GEM-15 elevation for the current map view in one step: a live hillshade and local relief model in a group, and the tile edges. Zoom to your area and press Run; nothing is downloaded beyond what is drawn.</para>
+		</summary>
+		<usage>
+			<bullet_item>Works for views up to 6 x 6 degrees; use Add GEM-15 for Extent for more.</bullet_item>
+			<bullet_item>With a Standard or Advanced licence the elevation is a mosaic dataset; with Basic, a VRT file. Both stream from Google's public bucket; no account needed.</bullet_item>
+			<bullet_item>The local relief model is drawn at 1:50,000 and closer: zoom in to see it.</bullet_item>
+			<bullet_item>The DTM is predicted by machine learning: unreliable under trees and buildings (the canopy check shows where). Straight features along tile edges may be seams, not scarps. Heights are on the EGM96 geoid, not AHD.</bullet_item>
+			<bullet_item>Credit: Elevation: GEM-15, produced by Google (CC BY 4.0). Cite Batchu et al. (2026), doi:10.31223/X55N75.</bullet_item>
+		</usage>
+	</tool>
+	<dataIdInfo>
+		<idCitation>
+			<resTitle>GEM-15 for Current View</resTitle>
+		</idCitation>
+		<idPurp>Add GEM-15 elevation for the current map view in one step: a live hillshade and local relief model in a group, and the tile edges. Zoom to your area and press Run; nothing is downloaded beyond what is drawn.</idPurp>
+		<searchKeys>
+			<keyword>GEM-15</keyword>
+			<keyword>elevation</keyword>
+			<keyword>DEM</keyword>
+			<keyword>active faults</keyword>
+			<keyword>hillshade</keyword>
+		</searchKeys>
+	</dataIdInfo>
+	<distInfo>
+		<distFormat>
+			<formatName>ArcToolbox Tool</formatName>
+		</distFormat>
+	</distInfo>
+	<mdHrLv>
+		<ScopeCd value="005"/>
+	</mdHrLv>
 </metadata>

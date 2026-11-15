@@ -568,17 +568,17 @@ def credit_text():
 
 
 def set_credits(layer, title):
-    """Put the GEM-15 credit and caveat in a layer's metadata (Layer > Properties >
-    Metadata), as the QGIS plugin does."""
+    """Put the GEM-15 credit and caveat in the layer's description (Layer >
+    Properties > General), as the QGIS plugin puts them in its metadata.
+    Through the layer's CIM: assigning layer.metadata (arcpy.metadata) made a
+    later geoprocessing call kill the Python process (exit -1, every time in
+    headless Pro 3.4 tests, 2026-11-16)."""
     try:
-        md = arcpy.metadata.Metadata()
-        md.title = title
-        md.summary = "GEM-15 15 m elevation, streamed from Google's public cloud tiles."
-        md.description = credit_text()
-        md.credits = f"{ATTRIBUTION}. Licence: {DATA_LICENCE}. Cite: {CITATION}"
-        layer.metadata = md
+        cim = layer.getDefinition("V3")
+        cim.description = f"{title}. {credit_text()}"
+        layer.setDefinition(cim)
     except Exception:
-        pass                           # metadata is a courtesy, not essential
+        pass                           # the credit is a courtesy, not essential
 
 
 def add_dem_layer(m, path, name):

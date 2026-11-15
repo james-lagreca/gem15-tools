@@ -143,11 +143,14 @@ def test_include_poles():
 # --------------------------------------------------------------------------
 # GDAL (gdalops G6, G7) - needs osgeo
 # --------------------------------------------------------------------------
-gdal = pytest.importorskip("osgeo.gdal")
+@pytest.fixture
+def gdal():
+    """GDAL, or skip (the tests above this need none)."""
+    return pytest.importorskip("osgeo.gdal")
 
 
 @pytest.fixture(params=[False, True], ids=["exceptions-off", "exceptions-on"])
-def gdal_mode(request):
+def gdal_mode(request, gdal):
     """Run a test with GDAL exceptions off (as in QGIS and Pro) and on. GDAL
     3.6 keeps these settings as a stack (gdal under osr), so changes are made
     and undone in stack order."""
@@ -169,7 +172,7 @@ def gdal_mode(request):
         (mod.UseExceptions if on else mod.DontUseExceptions)()
 
 
-def test_importing_gdalops_leaves_exceptions_alone():
+def test_importing_gdalops_leaves_exceptions_alone(gdal):
     import importlib
     from osgeo import osr
     from gem15core import gdalops
@@ -217,7 +220,7 @@ def test_missing_source_is_a_gem15error(tmp_path, gdal_mode):
         gdalops.clip_to_geotiff(str(tmp_path / "nope.vrt"), str(tmp_path / "x.tif"), log=None)
 
 
-def test_proxy_and_timeouts_scoped_to_bucket(monkeypatch):
+def test_proxy_and_timeouts_scoped_to_bucket(monkeypatch, gdal):
     from gem15core import gdalops
     if not hasattr(gdal, "GetPathSpecificOption"):
         pytest.skip("GDAL < 3.6: options are not path-specific")

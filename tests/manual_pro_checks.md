@@ -1,53 +1,61 @@
 # Manual checks in the ArcGIS Pro window
 
-Everything below was tested headless with arcpy (Pro 3.4) by
+Everything below is tested headless with arcpy (Pro 3.4) by
 `tests/test_arcpy_tools.py` and `tests/test_arcpy_live.py`. These checks
-need the Pro window. Use a small area in Victoria first (UTM 55S), for
-example around 144.1 E, 37.5 S.
+need the Pro window. Start in Victoria (UTM 55S), around 144.1 E, 37.5 S.
 
-1. **Toolbox loads.** The toolbox has moved to `arcgis/GEM15Tools.pyt`:
-   remove the old one, restart Pro, add the new one. Four tools should
-   appear: Connect to GEM-15, Add GEM-15 For Extent, Terrain Stack (live)
-   and Clip for Analysis.
-2. **Connect to GEM-15** from its dialog. `gem15.acs` should appear in the
-   project home folder, and the Catalog pane should browse into it.
-3. **Add GEM-15 For Extent, Mosaic dataset**, current map extent, coordinate
-   system and mosaic name left blank. Messages should say "WGS 84 / UTM
-   zone 55S" and "Mosaic dataset name (automatic): GEM15_dtm_UTM55S". The
-   layer should draw. Look along tile overlaps for steps (assumption A3; try
-   Mosaic Method = Closest to Center). Then run it again over an area in
-   another zone, for example central Australia at 130 E (zone 52), name
-   still blank: it should make a second mosaic, GEM15_dtm_UTM52S, without
-   an error. (On 2026-11-15 this failed: the name always defaulted to
-   GEM15_dtm, so the second area was refused.)
-4. **Add GEM-15 For Extent, VRT file** (the open question, A8). Does the VRT
-   layer draw in the map view, and how fast at different zooms? Try one
-   area across UTM zones too (for example NZ at 174 E, or central Australia
-   at 132 E), which gives a warped VRT.
-   2026-11-15: draws, but slower than the mosaic (138-145 E, 35-39 S, three
-   zones). Since then each zone's warp covers only its own tiles, which
-   halved repeat draws in GDAL (2.8 s to 1.3 s per screen). Re-run the
-   tool to make a new VRT and compare. The first zoomed-out draw is still
-   slow (GDAL probes 7 side-file names per tile; ~90 s for 32 tiles).
-5. **Separate layers**: the layers should arrive with DRA on (Symbology >
-   Statistics: DRA).
-6. **Terrain Stack (live)** on the mosaic layer, then on the VRT layer.
-   You should get a group with LRM on top (40 % transparent), slope
-   (switched off) and hillshade. Check that:
-   - the stretches follow the view (DRA)
-   - flat ground in the hillshade is mid grey (low sun at 30 degrees)
-   - the LRM disappears when zoomed out past 1:100,000 (by design, A9)
-   - panning speed is acceptable, and zooming out over hillshade and slope
-     does not crawl (if it does, Pro is computing from full-resolution
-     pixels)
-   - the layers still draw after saving, closing and reopening the project
-7. **Clip for Analysis**: setting the extent should show a rough MB warning
-   before the run, and the run should warn with a closer figure. The
-   GeoTIFF and any derivatives should be added to the map. This tool runs
-   GDAL (osgeo) inside Pro, so report any crash or DLL error.
-8. **Antimeridian** (optional): in a map using a CRS centred near 180 (for
-   example EPSG 3460, Fiji Map Grid), Add For Extent should report an
-   extent with W > E "(crosses 180 degrees)" and find tiles on both sides.
-9. **Basic licence** (only if someone has one; this machine is Advanced).
-   Mosaic mode should show a licence error. Without Spatial Analyst or
-   Image Analyst, Terrain Stack should warn that the LRM uses a convolution.
+Done by the user, 2026-11-15: the toolbox loads; Connect to GEM-15; Add for
+Extent as a mosaic dataset, including a second area in another zone (fixed
+the same day); a VRT draws but more slowly than the mosaic (then sped up).
+
+After updating the toolbox folder: right-click the toolbox > Refresh. Six
+tools should show: GEM-15 for Current View and Swath Profile at the top, the
+other four in a "Step by step" toolset.
+
+1. **Hover help.** Open each tool: hovering over the Help button shows a
+   summary, and each parameter's (i) shows its help. (Read headless by arcpy;
+   not yet seen in the dialogs.)
+2. **GEM-15 for Current View**, zoomed to about 1:100,000, no inputs: a
+   group "GEM-15 terrain: ..." with the LRM (40 % transparent) on top, the
+   hillshade, and the elevation switched off at the bottom; the tile edges
+   dashed and labelled. How long does it take (headless: about 15 s)? Zoom to
+   1:50,000: the LRM appears. Its colours should not change as you pan
+   (fixed ranges, A13).
+3. **Live layers built on a stand-in (A15).** The terrain layers are made on
+   an empty stand-in raster and pointed at the real source. Headless they read
+   identical pixels; check they draw everywhere in the tiles, not just in one
+   corner, and still draw after saving, closing and reopening the project.
+4. **Run Current View again** after panning to a neighbouring tile in the
+   same zone: one group, rebuilt, covering both tiles; no second elevation
+   layer.
+5. **Illumination.** In Current View, Hillshade > Across a fault trend,
+   trend 30: the hillshade is lit from 300 degrees. Try vertical
+   exaggeration 2.
+6. **Canopy check** (Layers > Canopy check) over farmland with tree lines:
+   green over trees, nothing over bare paddocks.
+7. **Swath Profile**: draw a line across a scarp (the Profile Line parameter
+   lets you sketch on the map), give the four distances, run. Check the CSV
+   and PNG in the project's gem15\profiles folder and the height in the
+   messages.
+8. **Add GEM-15 for Extent, Mosaic dataset** with the extent blank (current
+   view): the mosaic layer arrives once, with DRA. Run it again: still one
+   layer. Look along tile overlaps for steps (A3; try Mosaic Method = Closest
+   to Center).
+9. **Add GEM-15 for Extent, VRT file** across zones (central Australia,
+   131.5-132.5 E, 25 S): the layer covers whole tiles, named "GEM-15 DTM
+   (GDA2020 / GA LCC, n tiles)". Compare speed with the 2026-11-15 run.
+10. **Terrain Stack** on a mosaic: how long (headless about 30 s for
+    hillshade and LRM)? Panning speed; zooming out over hillshade and slope
+    should not crawl.
+11. **Clip for Analysis** with the extent blank: the progress bar moves and
+    Cancel stops it (no half-written file). The estimate is a message, a
+    warning only near the limit. Derivatives with Across a fault trend.
+12. **A coordinate system in degrees** (e.g. WGS 84) in Clip or the VRT
+    output: an error before running, not a 1-pixel raster.
+13. **Antimeridian** (optional): in a map using EPSG 3460 (Fiji), Add for
+    Extent should report "(crosses 180 degrees)" and find tiles on both sides.
+    A polar map (EPSG 3995) around Svalbard should find the northern tiles.
+14. **Basic licence** (only if someone has one; this machine is Advanced):
+    Current View should make a VRT; Add for Extent should default to VRT
+    file. Without Spatial or Image Analyst, Terrain Stack warns that the LRM
+    uses a convolution.

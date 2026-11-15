@@ -1,96 +1,96 @@
-<?xml version='1.0' encoding='UTF-8'?>
+<?xml version="1.0" encoding="UTF-8"?>
 <metadata xml:lang="en">
-  <Esri>
-    <ArcGISFormat>1.0</ArcGISFormat>
-    <SyncOnce>TRUE</SyncOnce>
-  </Esri>
-  <tool name="SwathProfile" displayname="Swath Profile" toolboxalias="gem15" xmlns="">
-    <parameters>
-      <param name="line" displayname="Profile Line" type="Required" direction="Input" datatype="GPFeatureRecordSetLayer">
-        <dialogReference>
-          <para>The profile line: draw one on the map, or choose a line layer (its first line is used).</para>
-        </dialogReference>
-      </param>
-      <param name="in_raster" displayname="Input DEM" type="Required" direction="Input" datatype="GPRasterLayer">
-        <dialogReference>
-          <para>Elevation to profile, e.g. a GEM-15 layer added by GEM-15 for Current View, or a clip.</para>
-        </dialogReference>
-      </param>
-      <param name="width" displayname="Swath Width (m)" type="Required" direction="Input" datatype="GPDouble">
-        <dialogReference>
-          <para>Width of the band sampled either side of the line, in metres. Wider bands steady the median but blur where the scarp bends.</para>
-        </dialogReference>
-      </param>
-      <param name="out_folder" displayname="Output Folder" type="Optional" direction="Input" datatype="DEFolder">
-        <dialogReference>
-          <para>Folder for the CSV table and PNG plot (default: the gem15\profiles folder in the project's home folder).</para>
-        </dialogReference>
-      </param>
-      <param name="out_name" displayname="Output Name" type="Required" direction="Input" datatype="GPString">
-        <dialogReference>
-          <para>Name for the output files (.csv and .png are added).</para>
-        </dialogReference>
-      </param>
-      <param name="upper_from" displayname="Upper Side From (m along the line)" type="Optional" direction="Input" datatype="GPDouble">
-        <dialogReference>
-          <para>Start of the far-field range on one side, in metres along the line from its first point.</para>
-        </dialogReference>
-      </param>
-      <param name="upper_to" displayname="Upper Side To (m)" type="Optional" direction="Input" datatype="GPDouble">
-        <dialogReference>
-          <para>End of that range, in metres along the line.</para>
-        </dialogReference>
-      </param>
-      <param name="lower_from" displayname="Lower Side From (m)" type="Optional" direction="Input" datatype="GPDouble">
-        <dialogReference>
-          <para>Start of the far-field range on the other side of the scarp, in metres along the line.</para>
-        </dialogReference>
-      </param>
-      <param name="lower_to" displayname="Lower Side To (m)" type="Optional" direction="Input" datatype="GPDouble">
-        <dialogReference>
-          <para>End of that range, in metres along the line.</para>
-        </dialogReference>
-      </param>
-      <param name="out_csv" displayname="Profile Table (CSV)" type="Derived" direction="Output" datatype="DEFile">
-        <dialogReference>
-          <para>Table of the profile: distance and the summary heights at each step.</para>
-        </dialogReference>
-      </param>
-      <param name="out_png" displayname="Profile Plot (PNG)" type="Derived" direction="Output" datatype="DEFile">
-        <dialogReference>
-          <para>Plot of the profile with the fitted far-field lines.</para>
-        </dialogReference>
-      </param>
-    </parameters>
-    <summary>
-      <para>Summarise the DEM in a band along a line drawn across a scarp (lowest, quartiles, median and highest heights every 15 m), and estimate the scarp's height from the far-field surfaces either side.</para>
-    </summary>
-    <usage>
-      <bullet_item>Draw the line across the scarp, from the upthrown to the downthrown side or the reverse; distances are measured from its first point.</bullet_item>
-      <bullet_item>For the scarp height, give a distance range on each side, away from the scarp face. Straight lines are fitted to the median there; their separation at the scarp's middle is reported with a 1-sigma uncertainty (a lower bound).</bullet_item>
-      <bullet_item>Only the DEM around the line is read. Works on GEM-15 mosaic datasets, VRTs and clips in a projected (metre) coordinate system.</bullet_item>
-      <bullet_item>Features narrower than about 45 m (3 pixels) or lower than 1-2 m are beyond what 15 m, machine-learning elevation supports.</bullet_item>
-    </usage>
-  </tool>
-  <dataIdInfo>
-    <idCitation>
-      <resTitle>Swath Profile</resTitle>
-    </idCitation>
-    <idPurp>Summarise the DEM in a band along a line drawn across a scarp (lowest, quartiles, median and highest heights every 15 m), and estimate the scarp's height from the far-field surfaces either side.</idPurp>
-    <searchKeys>
-      <keyword>GEM-15</keyword>
-      <keyword>elevation</keyword>
-      <keyword>DEM</keyword>
-      <keyword>active faults</keyword>
-      <keyword>hillshade</keyword>
-    </searchKeys>
-  </dataIdInfo>
-  <distInfo>
-    <distFormat>
-      <formatName>ArcToolbox Tool</formatName>
-    </distFormat>
-  </distInfo>
-  <mdHrLv>
-    <ScopeCd value="005" />
-  </mdHrLv>
+	<Esri>
+		<ArcGISFormat>1.0</ArcGISFormat>
+		<SyncOnce>TRUE</SyncOnce>
+	</Esri>
+	<tool name="SwathProfile" displayname="Swath Profile" toolboxalias="gem15" xmlns="">
+		<parameters>
+			<param name="line" displayname="Profile Line" type="Required" direction="Input" datatype="GPFeatureRecordSetLayer">
+				<dialogReference>
+					<para>The profile line: draw one on the map, or choose a line layer (its first line is used).</para>
+				</dialogReference>
+			</param>
+			<param name="in_raster" displayname="Input DEM" type="Required" direction="Input" datatype="GPRasterLayer">
+				<dialogReference>
+					<para>Elevation to profile, e.g. a GEM-15 layer added by GEM-15 for Current View, or a clip.</para>
+				</dialogReference>
+			</param>
+			<param name="width" displayname="Swath Width (m)" type="Required" direction="Input" datatype="GPDouble">
+				<dialogReference>
+					<para>Width of the band sampled either side of the line, in metres. Wider bands steady the median but blur where the scarp bends.</para>
+				</dialogReference>
+			</param>
+			<param name="out_folder" displayname="Output Folder" type="Optional" direction="Input" datatype="DEFolder">
+				<dialogReference>
+					<para>Folder for the CSV table and PNG plot (default: the gem15\profiles folder in the project's home folder).</para>
+				</dialogReference>
+			</param>
+			<param name="out_name" displayname="Output Name" type="Required" direction="Input" datatype="GPString">
+				<dialogReference>
+					<para>Name for the output files (.csv and .png are added).</para>
+				</dialogReference>
+			</param>
+			<param name="upper_from" displayname="Upper Side From (m along the line)" type="Optional" direction="Input" datatype="GPDouble">
+				<dialogReference>
+					<para>Start of the far-field range on one side, in metres along the line from its first point.</para>
+				</dialogReference>
+			</param>
+			<param name="upper_to" displayname="Upper Side To (m)" type="Optional" direction="Input" datatype="GPDouble">
+				<dialogReference>
+					<para>End of that range, in metres along the line.</para>
+				</dialogReference>
+			</param>
+			<param name="lower_from" displayname="Lower Side From (m)" type="Optional" direction="Input" datatype="GPDouble">
+				<dialogReference>
+					<para>Start of the far-field range on the other side of the scarp, in metres along the line.</para>
+				</dialogReference>
+			</param>
+			<param name="lower_to" displayname="Lower Side To (m)" type="Optional" direction="Input" datatype="GPDouble">
+				<dialogReference>
+					<para>End of that range, in metres along the line.</para>
+				</dialogReference>
+			</param>
+			<param name="out_csv" displayname="Profile Table (CSV)" type="Derived" direction="Output" datatype="DEFile">
+				<dialogReference>
+					<para>Table of the profile: distance and the summary heights at each step.</para>
+				</dialogReference>
+			</param>
+			<param name="out_png" displayname="Profile Plot (PNG)" type="Derived" direction="Output" datatype="DEFile">
+				<dialogReference>
+					<para>Plot of the profile with the fitted far-field lines.</para>
+				</dialogReference>
+			</param>
+		</parameters>
+		<summary>
+			<para>Summarise the DEM in a band along a line drawn across a scarp (lowest, quartiles, median and highest heights every 15 m), and estimate the scarp's height from the far-field surfaces either side.</para>
+		</summary>
+		<usage>
+			<bullet_item>Draw the line across the scarp, from the upthrown to the downthrown side or the reverse; distances are measured from its first point.</bullet_item>
+			<bullet_item>For the scarp height, give a distance range on each side, away from the scarp face. Straight lines are fitted to the median there; their separation at the scarp's middle is reported with a 1-sigma uncertainty (a lower bound).</bullet_item>
+			<bullet_item>Only the DEM around the line is read. Works on GEM-15 mosaic datasets, VRTs and clips in a projected (metre) coordinate system.</bullet_item>
+			<bullet_item>Features narrower than about 45 m (3 pixels) or lower than 1-2 m are beyond what 15 m, machine-learning elevation supports.</bullet_item>
+		</usage>
+	</tool>
+	<dataIdInfo>
+		<idCitation>
+			<resTitle>Swath Profile</resTitle>
+		</idCitation>
+		<idPurp>Summarise the DEM in a band along a line drawn across a scarp (lowest, quartiles, median and highest heights every 15 m), and estimate the scarp's height from the far-field surfaces either side.</idPurp>
+		<searchKeys>
+			<keyword>GEM-15</keyword>
+			<keyword>elevation</keyword>
+			<keyword>DEM</keyword>
+			<keyword>active faults</keyword>
+			<keyword>hillshade</keyword>
+		</searchKeys>
+	</dataIdInfo>
+	<distInfo>
+		<distFormat>
+			<formatName>ArcToolbox Tool</formatName>
+		</distFormat>
+	</distInfo>
+	<mdHrLv>
+		<ScopeCd value="005"/>
+	</mdHrLv>
 </metadata>

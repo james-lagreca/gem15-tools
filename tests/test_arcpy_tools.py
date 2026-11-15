@@ -270,6 +270,7 @@ def test_layer_files_and_map(pyt, dem_tif, tmp_path, synthetic):
     lyr = pyt.add_rasters_to_map(m, [dem_tif], ["GEM-15 DTM (test)"])[0]
     assert lyr.name == "GEM-15 DTM (test)"
     assert lyr.getDefinition("V3").colorizer.statsType == "AreaOfView"   # elevation: DRA
+    assert "CC BY 4.0" in lyr.getDefinition("V3").description            # credit
     assert len(pyt.add_rasters_to_map(m, [dem_tif], ["again"])) == 1    # no duplicate
     assert [x.name for x in m.listLayers()].count("GEM-15 DTM (test)") == 1
     group = pyt.add_layer_files(m, files, "GEM-15 terrain: dem", dem_tif, "GEM-15 DTM (test)")

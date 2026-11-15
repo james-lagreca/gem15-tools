@@ -1,0 +1,29 @@
+# Core tests on every push. GDAL, arcpy and QGIS are not installed here, so
+# the tests needing them skip; run those locally (CONTRIBUTING.md).
+name: tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  core:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.9", "3.12"]     # 3.9 as in QGIS 3.28
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install test tools
+        run: python -m pip install pytest numpy pyflakes
+      - name: Lint
+        run: python -m pyflakes core cli tools qgis/gem15 arcgis/gem15help.py
+      - name: Vendored core matches core/gem15core
+        run: python tools/vendor_core.py --check
+      - name: ArcGIS help files are current
+        run: python tools/build_pyt_help.py --check
+      - name: Tests
+        run: python -m pytest -q

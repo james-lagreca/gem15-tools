@@ -1,19 +1,19 @@
-<?xml version='1.0' encoding='UTF-8'?>
+<?xml version="1.0" encoding="UTF-8"?>
 <metadata xml:lang="en">
-  <Esri>
-    <ArcGISFormat>1.0</ArcGISFormat>
-    <SyncOnce>TRUE</SyncOnce>
-  </Esri>
-  <toolbox name="GEM15Tools" alias="gem15" />
-  <dataIdInfo>
-    <idCitation>
-      <resTitle>GEM-15 Tools</resTitle>
-    </idCitation>
-    <idPurp>Stream Google's GEM-15 15 m elevation (DTM and DSM) into ArcGIS Pro for active-fault mapping, without downloading tiles. Start with GEM-15 for Current View.</idPurp>
-  </dataIdInfo>
-  <distInfo>
-    <distFormat>
-      <formatName>ArcToolbox Toolbox</formatName>
-    </distFormat>
-  </distInfo>
+	<Esri>
+		<ArcGISFormat>1.0</ArcGISFormat>
+		<SyncOnce>TRUE</SyncOnce>
+		<ModDate>20261116</ModDate><ModTime>073510</ModTime></Esri>
+	<toolbox name="GEM15Tools" alias="gem15"><arcToolboxHelpPath>c:\program files\arcgis\pro\Resources\Help\gp</arcToolboxHelpPath><toolsets/></toolbox>
+	<dataIdInfo>
+		<idCitation>
+			<resTitle>GEM15Tools</resTitle>
+		</idCitation>
+		<idPurp>Stream Google's GEM-15 15 m elevation (DTM and DSM) into ArcGIS Pro for active-fault mapping, without downloading tiles. Start with GEM-15 for Current View.</idPurp>
+	</dataIdInfo>
+	<distInfo>
+		<distFormat>
+			<formatName>ArcToolbox Toolbox</formatName>
+		</distFormat>
+		<distributor><distorFormat><formatName>ArcToolbox Toolbox</formatName></distorFormat></distributor></distInfo>
 </metadata>
