@@ -16,24 +16,26 @@ import traceback
 
 from qgis.core import QgsApplication, QgsTask
 
+from . import edges, live
 from . import layers as layers_mod
-from . import live
 from .compat import enum
-from .gem15core import Gem15Error
+from .gem15core import Gem15Error, terrain
 
 
 class CurrentViewTask(QgsTask):
     """Find tiles for a lon/lat box, write VRTs and build styled layers."""
 
     def __init__(self, bbox, kind, folder, per_zone, on_done, fetch=None,
-                 collection_url=None):
+                 collection_url=None, lrm_radius_m=terrain.LRM_RADIUS_M, tile_edges=False):
         super().__init__(f"GEM-15 {kind.upper()} for current view",
                          enum("QgsTask.Flag.CanCancel"))
         self.bbox, self.kind, self.folder, self.per_zone = bbox, kind, folder, per_zone
         self.fetch, self.collection_url = fetch, collection_url
+        self.lrm_radius_m, self.tile_edges = lrm_radius_m, tile_edges
         self.on_done = on_done
         self.plan = None
         self.layers = []
+        self.edges_path = None
         self.error = None
         self.log_lines = []
 
@@ -43,9 +45,12 @@ class CurrentViewTask(QgsTask):
             self.plan = live.plan_layers(
                 self.bbox, self.kind, self.folder, per_zone=self.per_zone,
                 fetch=self.fetch, collection_url=self.collection_url,
+                lrm_radius_m=self.lrm_radius_m,
                 log=self.log_lines.append, is_cancelled=self.isCanceled)
             if self.isCanceled():
                 return False
+            if self.tile_edges:
+                self.edges_path = edges.update_tile_edges(self.plan.tiles, "dtm", self.folder)
             self.setProgress(60)
             main = QgsApplication.instance().thread()
             for i, spec in enumerate(self.plan.layers):
@@ -58,8 +63,10 @@ class CurrentViewTask(QgsTask):
             return True
         except Gem15Error as e:
             self.error = str(e)
-        except Exception:                      # report, never crash QGIS
-            self.error = "Unexpected error:\n" + traceback.format_exc()
+        except Exception as e:                 # report, never crash QGIS
+            self.error = (f"Something went wrong ({type(e).__name__}: {e}). Details are in "
+                          "View > Panels > Log Messages, GEM-15 tab.\n"
+                          + traceback.format_exc())
         return False
 
     def finished(self, ok):

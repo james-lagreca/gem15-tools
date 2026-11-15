@@ -106,3 +106,51 @@ def write_lrm_vrt(base_vrt, out_path, radius_m=terrain.LRM_RADIUS_M, pixel_m=PIX
     os.makedirs(out_dir, exist_ok=True)
     ET.ElementTree(root).write(out_path, encoding="utf-8")
     return out_path
+
+
+def _source_name(path, out_dir):
+    """(text, relativeToVRT) for a source file, relative when beside the VRT."""
+    p = os.path.abspath(path)
+    return (os.path.basename(p), "1") if os.path.dirname(p) == out_dir else (p, "0")
+
+
+def write_diff_vrt(minuend_vrt, subtrahend_vrt, out_path, description="DSM minus DTM (m)"):
+    """Write a VRT whose band is minuend minus subtrahend (GDAL's built-in
+    "diff" pixel function), e.g. DSM - DTM for the canopy check
+    (gem15core.terrain T7). Both inputs must share their grid (same size,
+    geotransform and CRS); this is checked. Returns out_path."""
+    a, b = ET.parse(minuend_vrt).getroot(), ET.parse(subtrahend_vrt).getroot()
+    for r in (a, b):
+        if r.tag != "VRTDataset":
+            raise Gem15Error("write_diff_vrt needs two GDAL VRTs")
+
+    def grid(r):
+        return (r.get("rasterXSize"), r.get("rasterYSize"),
+                (r.findtext("GeoTransform") or "").replace(" ", ""))
+    if grid(a) != grid(b):
+        raise Gem15Error("The DSM and DTM VRTs are on different grids; write them with the "
+                         "same bounds.")
+    root = ET.Element("VRTDataset", rasterXSize=a.get("rasterXSize"),
+                      rasterYSize=a.get("rasterYSize"))
+    for tag in ("SRS", "GeoTransform"):
+        el = a.find(tag)
+        if el is not None:
+            root.append(el)
+    band = ET.SubElement(root, "VRTRasterBand", dataType="Float32", band="1",
+                         subClass="VRTDerivedRasterBand")
+    bmd = ET.SubElement(band, "Metadata")                 # L5: no sampling on open
+    for key, val in NOMINAL_STATS.items():
+        ET.SubElement(bmd, "MDI", key=key).text = val
+    ET.SubElement(band, "Description").text = description
+    ET.SubElement(band, "NoDataValue").text = "nan"
+    ET.SubElement(band, "PixelFunctionType").text = "diff"
+    out_dir = os.path.dirname(os.path.abspath(out_path))
+    for path in (minuend_vrt, subtrahend_vrt):
+        src = ET.SubElement(band, "SimpleSource")
+        text, rel = _source_name(path, out_dir)
+        ET.SubElement(src, "SourceFilename", relativeToVRT=rel).text = text
+        ET.SubElement(src, "SourceBand").text = "1"
+    ET.indent(root)
+    os.makedirs(out_dir, exist_ok=True)
+    ET.ElementTree(root).write(out_path, encoding="utf-8")
+    return out_path

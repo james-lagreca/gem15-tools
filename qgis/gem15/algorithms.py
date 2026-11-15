@@ -11,12 +11,13 @@ cached catalogue lookup and GDAL's range reads of the public COGs.
 import os
 import uuid
 
-from qgis.core import (QgsProcessingAlgorithm,
+from qgis.core import (QgsCoordinateTransform, QgsProcessingAlgorithm,
                        QgsProcessingContext, QgsProcessingException,
                        QgsProcessingLayerPostProcessorInterface,
                        QgsProcessingOutputMultipleLayers, QgsProcessingParameterBoolean,
                        QgsProcessingParameterCrs, QgsProcessingParameterEnum,
-                       QgsProcessingParameterExtent, QgsProcessingParameterFileDestination,
+                       QgsProcessingParameterExtent, QgsProcessingParameterFeatureSource,
+                       QgsProcessingParameterFileDestination,
                        QgsProcessingParameterNumber, QgsProcessingParameterRasterDestination,
                        QgsProcessingParameterRasterLayer, QgsProcessingParameterString,
                        QgsProcessingUtils, QgsRasterLayer)
@@ -38,6 +39,9 @@ LAYER_CHOICES = [
     ("dsm", "dsm_std", "DSM standard deviation"),
 ]
 RESAMPLING = ["bilinear", "cubic", "near"]
+# Labels for gem15core.terrain.ILLUMINATIONS, in the same order.
+ILLUMINATIONS = ["Multidirectional", "Single sun (azimuth below)",
+                 "Across a fault trend (trend below)"]
 CREDIT = (f"<p>Data: GEM-15, CC-BY 4.0. \"{ATTRIBUTION}\". Please cite {CITATION}. "
           "Heights are EGM96 orthometric (EPSG:5773).</p>")
 AUTO_CRS_HELP = (
@@ -66,12 +70,16 @@ class _Styler(QgsProcessingLayerPostProcessorInterface):
     def postProcessLayer(self, layer, context, feedback):
         if not isinstance(layer, QgsRasterLayer):
             return
+        from . import settings
         if self.style == "hillshade":
             layer.setRenderer(layers_mod.hillshade_renderer(layer))
+        elif self.style == "spread":                   # dsm_std: not a surface (R5)
+            layer.setRenderer(layers_mod.spread_renderer(layer))
         elif self.style == "lrm":
-            layer.setRenderer(layers_mod.lrm_renderer(layer))
+            renderer = layers_mod.lrm_renderer(layer)
+            renderer.setOpacity(settings.LRM_OPACITY)
+            layer.setRenderer(renderer)
             if layer.source().lower().endswith(".vrt"):          # live LRM: large scales only
-                from . import settings
                 layer.setScaleBasedVisibility(True)
                 layer.setMinimumScale(settings.LRM_MAX_SCALE)
         layers_mod.credit(layer)
@@ -171,7 +179,7 @@ class BuildVrtAlgorithm(_Base):
             "reads only the blocks and overview levels it draws.</p>" + AUTO_CRS_HELP +
             "<p><b>Live LRM</b> also writes a local relief model VRT (elevation minus its "
             "mean within the radius), computed by GDAL as QGIS draws. It is drawn only at "
-            "large scales (1:40,000 and closer), where QGIS reads native pixels; zoomed out "
+            "large scales (1:50,000 and closer), where QGIS reads native pixels; zoomed out "
             "GDAL would show plain elevation. Voids grow by the radius in it. A 300 m radius "
             "costs about 1 s per redraw at 1:25,000 on a full-HD screen.</p>" + CREDIT)
 
@@ -218,8 +226,9 @@ class BuildVrtAlgorithm(_Base):
             if not target.isValid():
                 raise QgsProcessingException(tr("Choose a CRS, or use the automatic choice."))
             if target.isGeographic():
-                feedback.pushWarning(tr("The CRS is geographic (degrees): hillshade and LRM "
-                                        "need metres. Consider a projected CRS."))
+                raise QgsProcessingException(tr(
+                    "The CRS uses degrees, which would give a raster one pixel wide. Choose "
+                    "a projected CRS in metres, or use the automatic choice."))
             kw["dst_crs"] = _crs_string(target)
         try:
             result = gdalsafe.call("Building the VRT", gdalsafe.gdalops.build_vrt, bbox, out, **kw)
@@ -228,9 +237,10 @@ class BuildVrtAlgorithm(_Base):
         paths = result if isinstance(result, list) else [result]
         hill = self.parameterAsBool(parameters, "HILLSHADE", context)
         outputs = []
+        style = "spread" if band == "dsm_std" else ("hillshade" if hill else "elevation")
         for p in paths:
             name = f"GEM-15 {label} ({os.path.splitext(os.path.basename(p))[0]})"
-            _load(context, p, name, "hillshade" if hill else "elevation")
+            _load(context, p, name, style)
             outputs.append(p)
         if self.parameterAsBool(parameters, "LIVE_LRM", context):
             radius = self.parameterAsDouble(parameters, "LRM_RADIUS", context)
@@ -368,9 +378,21 @@ class DerivativesAlgorithm(_Base):
         self.addParameter(QgsProcessingParameterNumber(
             "ALTITUDE", tr("Hillshade sun altitude (degrees)"), type=dbl,
             defaultValue=terrain.HILLSHADE_ALTITUDE, minValue=0.0, maxValue=90.0))
+        self.addParameter(QgsProcessingParameterEnum(
+            "ILLUMINATION", tr("Hillshade illumination"), options=ILLUMINATIONS,
+            defaultValue=0))
         self.addParameter(QgsProcessingParameterNumber(
-            "LRM_RADIUS", tr("LRM radius (m)"), type=dbl, defaultValue=terrain.LRM_RADIUS_M,
-            minValue=terrain.LRM_RADIUS_MIN_M))
+            "AZIMUTH", tr("Sun azimuth (degrees; for a single sun)"), type=dbl,
+            defaultValue=terrain.HILLSHADE_AZIMUTH, minValue=0.0, maxValue=360.0))
+        self.addParameter(QgsProcessingParameterNumber(
+            "FAULT_TREND", tr("Fault trend (degrees; to light across it)"), type=dbl,
+            optional=True, minValue=0.0, maxValue=360.0))
+        self.addParameter(QgsProcessingParameterNumber(
+            "Z_FACTOR", tr("Vertical exaggeration (z factor)"), type=dbl,
+            defaultValue=terrain.HILLSHADE_Z_FACTOR, minValue=0.1, maxValue=20.0))
+        self.addParameter(QgsProcessingParameterNumber(
+            "LRM_RADIUS", tr("LRM radius (m): 150 narrow scarps, 300 default, 1000 broad"),
+            type=dbl, defaultValue=terrain.LRM_RADIUS_M, minValue=terrain.LRM_RADIUS_MIN_M))
         for key, text in (("OUTPUT_HILLSHADE", "Hillshade"), ("OUTPUT_SLOPE", "Slope (degrees)"),
                           ("OUTPUT_LRM", "Local relief model")):
             self.addParameter(QgsProcessingParameterRasterDestination(
@@ -411,9 +433,13 @@ class DerivativesAlgorithm(_Base):
 
             try:
                 if key == "OUTPUT_HILLSHADE":
-                    feedback.pushInfo(tr("Hillshade..."))
+                    azimuth = self._azimuth(parameters, context)
+                    feedback.pushInfo(tr("Hillshade..." if azimuth is None else
+                                         f"Hillshade, one sun at azimuth {azimuth:g} degrees..."))
                     derivatives.hillshade(src, path, self.parameterAsDouble(parameters, "ALTITUDE", context),
-                                          progress=progress, is_cancelled=feedback.isCanceled)
+                                          self.parameterAsDouble(parameters, "Z_FACTOR", context),
+                                          progress=progress, is_cancelled=feedback.isCanceled,
+                                          azimuth=azimuth)
                 elif key == "OUTPUT_SLOPE":
                     feedback.pushInfo(tr("Slope..."))
                     derivatives.slope(src, path, progress=progress, is_cancelled=feedback.isCanceled)
@@ -431,7 +457,124 @@ class DerivativesAlgorithm(_Base):
             results[key] = path
         return results
 
+    def _azimuth(self, parameters, context):
+        """Sun azimuth, or None for multidirectional (gem15core.terrain T1)."""
+        how = terrain.ILLUMINATIONS[self.parameterAsEnum(parameters, "ILLUMINATION", context)]
+        trend = (None if parameters.get("FAULT_TREND") in (None, "")
+                 else self.parameterAsDouble(parameters, "FAULT_TREND", context))
+        try:
+            return terrain.sun_azimuth(how, self.parameterAsDouble(parameters, "AZIMUTH",
+                                                                   context), trend)
+        except ValueError as e:
+            raise QgsProcessingException(tr(str(e)))
+
+
+# --------------------------------------------------------------------------
+class SwathProfileAlgorithm(_Base):
+    """Swath profile across a scarp, with an optional scarp-height estimate."""
+
+    BOUNDS = (("UPPER_FROM", "Upper side from (m along the line)"),
+              ("UPPER_TO", "Upper side to (m)"),
+              ("LOWER_FROM", "Lower side from (m)"),
+              ("LOWER_TO", "Lower side to (m)"))
+
+    def name(self):
+        return "swathprofile"
+
+    def displayName(self):
+        return tr("Swath profile across a scarp")
+
+    def shortHelpString(self):
+        return tr(
+            "<p>Samples the DEM in a band along the first line of the layer (or the first "
+            "selected line) every pixel, and summarises each step across the band: lowest, "
+            "quartiles, median, highest. Single-pixel profiles of this machine-learning DTM "
+            "are noisy; the band's median is steadier.</p>"
+            "<p>Give two distance ranges along the line, on the far fields either side of "
+            "the scarp, to estimate its height: straight lines are fitted to the median in "
+            "each, and their separation at the scarp's middle is reported with a 1-sigma "
+            "uncertainty (a lower bound, as neighbouring steps are correlated).</p>"
+            "<p>Works on any DEM QGIS reads through GDAL: a GEM-15 VRT (only the window "
+            "around the line is downloaded) or a clip. The DEM must be projected, in "
+            "metres.</p>" + CREDIT)
+
+    def initAlgorithm(self, config=None):
+        self.addParameter(QgsProcessingParameterFeatureSource(
+            "LINE", tr("Profile line"), types=[enum("Qgis.ProcessingSourceType.VectorLine",
+                                                    "QgsProcessing.SourceType.TypeVectorLine",
+                                                    "QgsProcessing.TypeVectorLine")]))
+        self.addParameter(QgsProcessingParameterRasterLayer("DEM", tr("DEM")))
+        dbl = enum("Qgis.ProcessingNumberParameterType.Double",
+                   "QgsProcessingParameterNumber.Type.Double")
+        self.addParameter(QgsProcessingParameterNumber(
+            "WIDTH", tr("Swath width (m)"), type=dbl, defaultValue=300.0, minValue=15.0,
+            maxValue=5000.0))
+        for key, text in self.BOUNDS:
+            self.addParameter(QgsProcessingParameterNumber(key, tr(text), type=dbl,
+                                                           optional=True, minValue=0.0))
+        self.addParameter(QgsProcessingParameterFileDestination(
+            "OUTPUT_CSV", tr("Profile table"), fileFilter="CSV (*.csv)"))
+        self.addParameter(QgsProcessingParameterFileDestination(
+            "OUTPUT_PNG", tr("Profile plot"), fileFilter="PNG (*.png)", optional=True))
+
+    def processAlgorithm(self, parameters, context, feedback):
+        import numpy as np
+
+        from . import gdalsafe
+        from .gem15core import CAVEAT, profile
+        source = self.parameterAsSource(parameters, "LINE", context)
+        dem = self.parameterAsRasterLayer(parameters, "DEM", context)
+        if source is None or dem is None:
+            raise QgsProcessingException(tr("Give a line layer and a DEM."))
+        if dem.crs().isGeographic():
+            raise QgsProcessingException(tr("The DEM is in degrees; use a projected (metre) "
+                                            "GEM-15 layer or clip."))
+        geom = next((f.geometry() for f in source.getFeatures()
+                     if f.hasGeometry() and not f.geometry().isEmpty()), None)
+        if geom is None:
+            raise QgsProcessingException(tr("The line layer has no line."))
+        geom.transform(QgsCoordinateTransform(source.sourceCrs(), dem.crs(),
+                                              context.transformContext()))
+        parts = geom.asMultiPolyline() if geom.isMultipart() else [geom.asPolyline()]
+        line_xy = [(p.x(), p.y()) for p in parts[0]]
+        bounds = [None if parameters.get(k) in (None, "")
+                  else self.parameterAsDouble(parameters, k, context) for k, _ in self.BOUNDS]
+        if any(b is not None for b in bounds) and None in bounds:
+            raise QgsProcessingException(tr("Give all four distances for the scarp height, "
+                                             "or none."))
+        width = self.parameterAsDouble(parameters, "WIDTH", context)
+        try:
+            gdalsafe.configure_remote()
+            ds = gdalsafe.open_raster(dem.source())
+            gt = ds.GetGeoTransform()
+            win = profile.window_for(line_xy, width, gt, ds.RasterXSize, ds.RasterYSize)
+            band = ds.GetRasterBand(1)
+            arr = gdalsafe.check(band.ReadAsArray(*win), "Reading the DEM")
+            arr = arr.astype(float)
+            nd = band.GetNoDataValue()
+            if nd is not None and not np.isnan(nd):
+                arr[arr == nd] = np.nan
+            sw = profile.sample_swath(arr, profile.window_geotransform(gt, win), line_xy,
+                                      width, step_m=abs(gt[1]))
+            fit = None
+            if bounds[0] is not None:
+                fit = profile.scarp_height(sw, (bounds[0], bounds[1]), (bounds[2], bounds[3]))
+        except (Gem15Error, ValueError) as e:
+            raise QgsProcessingException(str(e))
+        out_csv = self.parameterAsFileOutput(parameters, "OUTPUT_CSV", context)
+        profile.to_csv(sw, out_csv, fit)
+        out_png = self.parameterAsFileOutput(parameters, "OUTPUT_PNG", context)
+        png = profile.plot_png(sw, out_png, fit, title=f"Swath profile, {width:g} m wide") \
+            if out_png else None
+        feedback.pushInfo(tr(f"{sw.length_m:,.0f} m long, {len(sw.distance)} steps. "
+                             f"Wrote {out_csv}" + (f" and {png}" if png else "")))
+        for line in (fit.describe() if fit else []):
+            feedback.pushInfo(line)
+        feedback.pushInfo(CAVEAT)
+        return {"OUTPUT_CSV": out_csv, "OUTPUT_PNG": png or ""}
+
 
 def all_algorithms():
-    return [BuildVrtAlgorithm(), ClipAlgorithm(), DerivativesAlgorithm()]
+    return [BuildVrtAlgorithm(), ClipAlgorithm(), DerivativesAlgorithm(),
+            SwathProfileAlgorithm()]
 

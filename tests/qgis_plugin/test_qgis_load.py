@@ -70,7 +70,8 @@ def _check_loaded(plugin, registry, iface):
     assert len(iface.raster_menus["&GEM-15"]) == len(plugin.actions)
     prov = registry.providerById("gem15")
     assert prov is not None
-    assert sorted(a.name() for a in prov.algorithms()) == ["buildvrt", "clip", "derivatives"]
+    assert sorted(a.name() for a in prov.algorithms()) == ["buildvrt", "clip", "derivatives",
+                                                           "swathprofile"]
 
 
 def _unload(iface):

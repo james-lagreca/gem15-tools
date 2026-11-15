@@ -54,10 +54,13 @@ def _dem_processing(src, dst, mode, progress=None, is_cancelled=None, **kw):
 
 
 def hillshade(src, dst, altitude=terrain.HILLSHADE_ALTITUDE, z_factor=terrain.HILLSHADE_Z_FACTOR,
-              progress=None, is_cancelled=None):
-    """Multidirectional hillshade GeoTIFF (T1)."""
+              progress=None, is_cancelled=None, azimuth=None):
+    """Hillshade GeoTIFF: multidirectional, or one sun at `azimuth` (T1, T4)."""
+    if azimuth is None:
+        return _dem_processing(src, dst, "hillshade", progress, is_cancelled,
+                               multiDirectional=True, altitude=altitude, zFactor=z_factor)
     return _dem_processing(src, dst, "hillshade", progress, is_cancelled,
-                           multiDirectional=True, altitude=altitude, zFactor=z_factor)
+                           azimuth=float(azimuth), altitude=altitude, zFactor=z_factor)
 
 
 def slope(src, dst, z_factor=1.0, progress=None, is_cancelled=None):
