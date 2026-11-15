@@ -10,10 +10,6 @@ to rewrite those files; a test fails if a parameter has no help or the
 files are out of date. Keep each entry to a sentence or three.
 """
 
-TOOLBOX = ("Stream Google's GEM-15 15 m elevation (DTM and DSM) into ArcGIS Pro for "
-           "active-fault mapping, without downloading tiles. Start with GEM-15 for "
-           "Current View.")
-
 _SUN = {
     "illumination": "Multidirectional lights the surface from several directions, so no "
                     "scarp orientation is hidden. A single sun, or one shining across a "

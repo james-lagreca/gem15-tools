@@ -19,7 +19,7 @@ def builder(monkeypatch):
 def test_every_parameter_has_help(builder):
     files = builder.expected()               # raises SystemExit naming what is missing
     tools = builder.load_tools()
-    assert len(files) == len(tools) + 1      # one per tool, plus the toolbox
+    assert len(files) == len(tools)          # one per tool
     for cls_name, _, params in tools:
         assert params, cls_name
 

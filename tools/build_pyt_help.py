@@ -133,20 +133,6 @@ def tool_xml(cls_name, label, params, help_):
     return ET.ElementTree(root)
 
 
-def toolbox_xml(summary):
-    root = ET.Element("metadata", {"xml:lang": "en"})
-    esri = ET.SubElement(root, "Esri")
-    ET.SubElement(esri, "ArcGISFormat").text = "1.0"
-    ET.SubElement(esri, "SyncOnce").text = "TRUE"
-    ET.SubElement(root, "toolbox", name=STEM, alias="gem15")
-    info = ET.SubElement(root, "dataIdInfo")
-    ET.SubElement(ET.SubElement(info, "idCitation"), "resTitle").text = "GEM-15 Tools"
-    ET.SubElement(info, "idPurp").text = summary
-    dist = ET.SubElement(ET.SubElement(root, "distInfo"), "distFormat")
-    ET.SubElement(dist, "formatName").text = "ArcToolbox Toolbox"
-    return ET.ElementTree(root)
-
-
 def content(path):
     """What Pro shows from a help file: summary, usage and each parameter's text."""
     root = ET.parse(path).getroot()
@@ -162,9 +148,11 @@ def content(path):
 
 
 def expected():
-    """{path: ElementTree} for every help file, from the toolbox and gem15help."""
+    """{path: ElementTree} for every tool's help file, from the toolbox and
+    gem15help. (The toolbox's own GEM15Tools.pyt.xml is left to Pro: it
+    rewrites it with the date on every load, and tool help does not need it.)"""
     h = load_help()
-    files = {os.path.join(ARCGIS, f"{STEM}.pyt.xml"): toolbox_xml(h.TOOLBOX)}
+    files = {}
     problems = []
     for cls_name, label, params in load_tools():
         entry = h.HELP.get(cls_name)
@@ -205,11 +193,21 @@ def content_from_string(text):
     return content(tmp)
 
 
+def serialise(tree):
+    """The text ArcGIS writes back when it loads the toolbox (tab indents, CRLF,
+    double-quoted declaration, "/>" without a space; seen with arcpy, Pro 3.4),
+    so neither this script nor Pro leaves the files changed in git."""
+    ET.indent(tree, space="\t")
+    body = ET.tostring(tree.getroot(), encoding="unicode").replace(" />", "/>")
+    text = '<?xml version="1.0" encoding="UTF-8"?>\n' + body + "\n"
+    return text.replace("\r\n", "\n").replace("\n", "\r\n")
+
+
 def write():
     written = []
     for path, tree in expected().items():
-        ET.indent(tree)
-        tree.write(path, encoding="UTF-8", xml_declaration=True)
+        with open(path, "w", encoding="utf-8", newline="") as fh:
+            fh.write(serialise(tree))
         written.append(os.path.relpath(path, ROOT))
     return written
 

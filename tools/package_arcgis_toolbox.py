@@ -46,7 +46,7 @@ def build(out_dir):
         for folder, dirs, files in os.walk(ARCGIS):
             dirs[:] = sorted(d for d in dirs if d not in SKIP_DIRS)
             for name in sorted(files):
-                if name.endswith(SKIP_EXT):
+                if name.endswith(SKIP_EXT) or name == "GEM15Tools.pyt.xml":   # Pro's own
                     continue
                 full = os.path.join(folder, name)
                 rel = os.path.relpath(full, ARCGIS).replace(os.sep, "/")

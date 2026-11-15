@@ -8,3 +8,7 @@ __pycache__/
 *.aux.xml
 /out/
 /dist/
+
+# ArcGIS Pro rewrites the toolbox's own metadata (with the date) on every load;
+# the tool help files GEM15Tools.<Tool>.pyt.xml are generated and committed.
+arcgis/GEM15Tools.pyt.xml
