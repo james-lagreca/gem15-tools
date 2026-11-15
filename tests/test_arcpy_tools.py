@@ -9,6 +9,7 @@ import importlib.util
 import json
 import math
 import os
+import re
 import shutil
 
 import pytest
@@ -152,8 +153,19 @@ def test_sr_for_custom_choice_makes_a_mosaic(pyt, tmp_path):
         pa, pb = a.TransformPoint(lon, lat)[:2], b.TransformPoint(lon, lat)[:2]
         assert math.dist(pa, pb) < 0.01
     gdb = arcpy.management.CreateFileGDB(str(tmp_path), "t.gdb").getOutput(0)
-    md = arcpy.management.CreateMosaicDataset(gdb, "md", sr, 1, "32_BIT_FLOAT").getOutput(0)
+    name = pyt.auto_mosaic_name("dtm", sr)               # also a valid geodatabase name
+    assert re.fullmatch(r"GEM15_dtm_(TM|LCC)_\d+(_\d+)?[EW]", name), name
+    md = arcpy.management.CreateMosaicDataset(gdb, name, sr, 1, "32_BIT_FLOAT").getOutput(0)
     assert arcpy.Describe(md).spatialReference.name == sr.name
+
+
+def test_auto_mosaic_names_from_real_coordinate_systems(pyt):
+    names = {code: pyt.auto_mosaic_name("dtm", arcpy.SpatialReference(code))
+             for code in (32755, 32652, 7845, 2193, 7855)}
+    assert names == {32755: "GEM15_dtm_UTM55S", 32652: "GEM15_dtm_UTM52N",
+                     7845: "GEM15_dtm_GA_LCC", 2193: "GEM15_dtm_NZTM",
+                     7855: "GEM15_dtm_GDA2020_MGA_Zone_55"}
+    assert pyt.sr_utm_zone(arcpy.SpatialReference(7855)) == 55      # MGA zone = UTM zone
 
 
 def test_sr_to_gdal_codes(pyt):

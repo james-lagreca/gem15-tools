@@ -47,12 +47,31 @@ def test_zone_checks(monkeypatch):
     t = load_pyt(monkeypatch)
     sn = types.SimpleNamespace
     assert t.sr_utm_zone(sn(name="WGS_1984_UTM_Zone_55S")) == 55
+    assert t.sr_utm_zone(sn(name="GDA_1994_MGA_Zone_54")) == 54       # MGA = UTM zones
     assert t.sr_utm_zone(sn(name="GDA2020_GA_LCC")) is None
     assert t.zone_mismatch(55, [32752, 32753]) == [52, 53]     # central Australia
     assert t.zone_mismatch(55, [32754, 32755, 32756]) == []    # neighbours tolerated
     assert t.zone_mismatch(60, [32701]) == []                  # wraps at 180
     assert t.zone_mismatch(None, [32752]) == []                # LCC mosaic: never blocked
     assert t.zone_mismatch(55, [7845]) == [7845]               # not UTM: refuse
+
+
+def test_auto_mosaic_names(monkeypatch):
+    """A blank mosaic name becomes GEM15_<product>_<CRS>, a valid geodatabase name."""
+    t = load_pyt(monkeypatch)
+    sn = types.SimpleNamespace
+    assert t.auto_mosaic_name("dtm", sn(name="WGS_1984_UTM_Zone_52S", factoryCode=32752)) \
+        == "GEM15_dtm_UTM52S"
+    assert t.auto_mosaic_name("dsm", sn(name="WGS_1984_UTM_Zone_11N", factoryCode=32611)) \
+        == "GEM15_dsm_UTM11N"
+    assert t.crs_tag("GDA2020_GA_LCC", 7845) == "GA_LCC"
+    assert t.crs_tag("NZGD_2000_New_Zealand_Transverse_Mercator", 2193) == "NZTM"
+    # gem15core's custom projections have no code; the name keeps the centre.
+    assert t.crs_tag("GEM-15_custom_Transverse_Mercator_133.5E") == "TM_133_5E"
+    assert t.crs_tag("GEM-15_custom_Lambert_Conformal_Conic_105.5W") == "LCC_105_5W"
+    assert t.crs_tag("", 54009) == "EPSG54009" and t.crs_tag(None) == "custom"
+    for name in ("GEM15_dtm_UTM52S", t.auto_mosaic_name("dtm", sn(name="A b/c (d)"))):
+        assert name[0].isalpha() and all(c.isalnum() or c == "_" for c in name)
 
 
 def test_tool_definitions_import(monkeypatch):

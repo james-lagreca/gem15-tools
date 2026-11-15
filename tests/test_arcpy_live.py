@@ -22,6 +22,7 @@ lonlat_extent = offline.lonlat_extent
 VIC = (144.10, -37.52, 144.14, -37.49)          # UTM 55S
 NZ = (173.97, -41.75, 174.03, -41.72)           # across 174 E: UTM 59S and 60S
 CENTRAL = (131.9, -25.1, 132.1, -24.9)          # UTM 52S and 53S
+ZONE52 = (129.90, -25.60, 129.95, -25.55)       # UTM 52S only (failed in Pro, 2026-11-15)
 
 
 @pytest.fixture(scope="module")
@@ -50,14 +51,14 @@ def test_connect_reuses_then_replaces(tb, acs):
 
 
 def test_mosaic_victoria_with_live_terrain(tb, pyt, acs, gdb):
-    res = tb.AddGEM15ForExtent(lonlat_extent(VIC), "dtm", "Mosaic dataset", acs, gdb,
-                               "GEM15_dtm")
+    res = tb.AddGEM15ForExtent(lonlat_extent(VIC), "dtm", "Mosaic dataset", acs, gdb)
     md = res.getOutput(0)
     assert "automatic" in res.getMessages(0)
+    assert os.path.basename(md) == "GEM15_dtm_UTM55S"                   # blank name: from CRS
     assert arcpy.Describe(md).spatialReference.factoryCode == 32755    # tiles' own zone
     n = count(md)
     assert n >= 1
-    tb.AddGEM15ForExtent(lonlat_extent(VIC), "dtm", "Mosaic dataset", acs, gdb, "GEM15_dtm")
+    tb.AddGEM15ForExtent(lonlat_extent(VIC), "dtm", "Mosaic dataset", acs, gdb)
     assert count(md) == n                                               # duplicates skipped
     # The live derivatives read pixels from the cloud through the mosaic.
     x0, _, _, y1 = gdalops.aoi_bounds_in("EPSG:32755", VIC)
@@ -80,9 +81,21 @@ def test_mosaic_across_zones_gets_nztm(tb, acs, gdb):
 
 def test_utm_mosaic_refuses_distant_zones(tb, acs, gdb):
     tb.AddGEM15ForExtent(lonlat_extent(VIC), "dtm", "Mosaic dataset", acs, gdb, "GEM15_vic")
-    with pytest.raises(arcpy.ExecuteError, match="UTM zone 55"):
+    # The message names the mosaic a blank name would use (52S + 53S -> GA LCC).
+    with pytest.raises(arcpy.ExecuteError, match=r"UTM zone 55[^\n]*'GEM15_dtm_GA_LCC'"):
         tb.AddGEM15ForExtent(lonlat_extent(CENTRAL), "dtm", "Mosaic dataset", acs, gdb,
                              "GEM15_vic")
+
+
+def test_blank_name_gives_each_zone_its_own_mosaic(tb, acs, gdb):
+    """What failed in Pro: with one fixed default name, a second area in a
+    distant zone was refused. Blank names now follow the coordinate system."""
+    vic = tb.AddGEM15ForExtent(lonlat_extent(VIC), "dtm", "Mosaic dataset", acs, gdb)
+    z52 = tb.AddGEM15ForExtent(lonlat_extent(ZONE52), "dtm", "Mosaic dataset", acs, gdb)
+    assert os.path.basename(vic.getOutput(0)) == "GEM15_dtm_UTM55S"
+    assert os.path.basename(z52.getOutput(0)) == "GEM15_dtm_UTM52S"
+    assert arcpy.Describe(z52.getOutput(0)).spatialReference.factoryCode == 32752
+    assert count(z52.getOutput(0)) >= 1
 
 
 def test_separate_layers_return_paths_headless(tb, acs):

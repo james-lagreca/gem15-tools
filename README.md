@@ -30,7 +30,11 @@ map view are listed in `tests/manual_pro_checks.md`; QGIS 4 is untested.
 3. Zoom to your area and run **Add GEM-15 For Extent** with the current
    map extent. Output options:
    - *Mosaic dataset* (Standard or Advanced licence): one layer referencing
-     the cloud tiles; run again elsewhere with the same name to add tiles.
+     the cloud tiles. Leave the name blank and it is named after its
+     coordinate system (for example `GEM15_dtm_UTM55S`): running again in
+     the same zone adds tiles to it, and an area in another zone gets its own
+     mosaic. For one mosaic across Australia, type a name and choose
+     GDA2020 / GA LCC (EPSG 7845).
    - *Separate layers* (any licence): one layer per tile.
    - *VRT file* (any licence, no `.acs`): a small GDAL VRT that streams the
      tiles over https.

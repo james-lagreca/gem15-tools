@@ -12,9 +12,14 @@ example around 144.1 E, 37.5 S.
 2. **Connect to GEM-15** from its dialog. `gem15.acs` should appear in the
    project home folder, and the Catalog pane should browse into it.
 3. **Add GEM-15 For Extent, Mosaic dataset**, current map extent, coordinate
-   system left blank. Messages should say "WGS 84 / UTM zone 55S
-   (automatic)". The layer should draw. Look along tile overlaps for steps
-   (assumption A3; try Mosaic Method = Closest to Center).
+   system and mosaic name left blank. Messages should say "WGS 84 / UTM
+   zone 55S" and "Mosaic dataset name (automatic): GEM15_dtm_UTM55S". The
+   layer should draw. Look along tile overlaps for steps (assumption A3; try
+   Mosaic Method = Closest to Center). Then run it again over an area in
+   another zone, for example central Australia at 130 E (zone 52), name
+   still blank: it should make a second mosaic, GEM15_dtm_UTM52S, without
+   an error. (On 2026-11-15 this failed: the name always defaulted to
+   GEM15_dtm, so the second area was refused.)
 4. **Add GEM-15 For Extent, VRT file** (the open question, A8). Does the VRT
    layer draw in the map view, and how fast at different zooms? Try one
    area across UTM zones too (for example NZ at 174 E, or central Australia

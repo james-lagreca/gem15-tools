@@ -12,8 +12,10 @@ Tools (run them in this order the first time):
        the current map view) in the public STAC catalogue, then adds them as
          - Mosaic dataset: one seamless layer that REFERENCES the cloud COGs
            through the .acs; nothing is downloaded. Needs a Standard or
-           Advanced licence. Run again with a new extent and the same name
-           to add more tiles; tiles already present are skipped.
+           Advanced licence. Left blank, the mosaic's name follows its
+           coordinate system (GEM15_dtm_UTM55S, GEM15_dtm_GA_LCC, ...), so
+           running again in the same zone adds tiles to it, and an area in
+           another zone gets its own mosaic. Tiles already present are skipped.
          - Separate layers: each tile as its own layer (any licence).
          - VRT file: a small GDAL VRT that streams the COGs over https
            (any licence, no .acs). See A8.
@@ -60,7 +62,10 @@ Assumptions (flagged; verify if something looks wrong):
      coordinate system blank for the automatic choice: one UTM zone if the
      tiles share it, else GDA2020 / GA LCC (EPSG 7845) in Australia,
      NZTM2000 (EPSG 2193) in New Zealand, else a conformal projection
-     centred on the extent (gem15core.crs).
+     centred on the extent (gem15core.crs). GDA94/GDA2020 MGA zones are
+     checked as the UTM zones they share numbers with. Leave the mosaic name
+     blank too and it is named after that coordinate system, so a second
+     area in a distant zone gets its own mosaic instead of failing.
  A7. "Connect to GEM-15" checks the connection by opening one known tile
      (Victoria, cell w144sm38).
  A8. ArcGIS reads GEM-15 VRTs through its own GDAL. Headless arcpy (Pro 3.4)
@@ -200,8 +205,9 @@ def extent_to_lonlat(ext, densify=11):
 # Coordinate systems (A6)
 # --------------------------------------------------------------------------
 def sr_utm_zone(sr):
-    """UTM zone number from a coordinate system name like 'WGS_1984_UTM_Zone_55S'; else None."""
-    m = re.search(r"UTM_Zone_(\d+)", getattr(sr, "name", "") or "")
+    """UTM zone number from a coordinate system name like 'WGS_1984_UTM_Zone_55S'
+    or 'GDA2020_MGA_Zone_55' (MGA zones share UTM's zone numbers); else None."""
+    m = re.search(r"(?:UTM|MGA)_Zone_(\d+)", getattr(sr, "name", "") or "", re.IGNORECASE)
     return int(m.group(1)) if m else None
 
 
@@ -246,6 +252,33 @@ def sr_to_gdal(sr):
         except Exception:
             pass
     return sr.exportToString().split(";")[0]          # drop arcpy's x/y domain suffix
+
+
+# Short labels for the national grids the automatic choice uses.
+_CRS_TAGS = {7845: "GA_LCC", 2193: "NZTM"}
+
+
+def crs_tag(sr_name, factory_code=0):
+    """Short, geodatabase-safe label for a coordinate system, for automatic
+    mosaic names: 'UTM55S', 'GA_LCC', 'NZTM', else the cleaned-up CRS name
+    (e.g. 'TM_133_5E' for gem15core's custom Transverse Mercator)."""
+    code = int(factory_code or 0)
+    if code in _CRS_TAGS:
+        return _CRS_TAGS[code]
+    name = sr_name or ""
+    m = re.search(r"UTM_Zone_(\d+)([NS])", name, re.IGNORECASE)
+    if m:
+        return f"UTM{int(m.group(1))}{m.group(2).upper()}"
+    for long, short in (("GEM-15_custom_", ""), ("Transverse_Mercator", "TM"),
+                        ("Lambert_Conformal_Conic", "LCC")):
+        name = name.replace(long, short)
+    tag = re.sub(r"[^0-9A-Za-z]+", "_", name).strip("_")[:40]
+    return tag or (f"EPSG{code}" if code else "custom")
+
+
+def auto_mosaic_name(product, sr):
+    """Mosaic dataset name used when the name is left blank: GEM15_<product>_<CRS>."""
+    return f"GEM15_{product}_{crs_tag(getattr(sr, 'name', ''), getattr(sr, 'factoryCode', 0))}"
 
 
 # --------------------------------------------------------------------------
@@ -709,7 +742,7 @@ class ConnectToGEM15:
                                           p["out_name"].valueAsText, bool(p["replace"].value))
         _log(("Created " if created else "Kept existing ") + path)
         if connection_works(path):
-            _log("Connection checked: a known tile opens (A7).")
+            _log("Connection checked: a known tile opens.")
         else:
             arcpy.AddWarning("Could not open a known tile through the connection. Check the "
                              "internet connection, or a proxy or firewall blocking "
@@ -734,8 +767,8 @@ class AddGEM15ForExtent:
         acs = _param("acs", "GEM-15 cloud storage connection (.acs)", "DEFile", required=False)
         acs.filter.list = ["acs"]
         gdb = _param("gdb", "Geodatabase for mosaic dataset", "DEWorkspace", required=False)
-        name = _param("md_name", "Mosaic dataset name", "GPString", required=False,
-                      value="GEM15_dtm")
+        name = _param("md_name", "Mosaic dataset name (blank = automatic)", "GPString",
+                      required=False)
         sr = _param("sr", "Coordinate system (blank = automatic)", "GPSpatialReference",
                     required=False)
         folder = _param("vrt_folder", "Folder for VRT file", "DEFolder", required=False)
@@ -765,11 +798,8 @@ class AddGEM15ForExtent:
         p["sr"].enabled = mode in (MOSAIC, VRT)
         p["vrt_folder"].enabled = mode == VRT
         p["band"].enabled = mode == VRT and product == "dsm"
-        # Keep the default mosaic name in step with the product, unless the
-        # user has typed their own name.
-        name = p["md_name"].valueAsText
-        if product and (not name or name in ("GEM15_dtm", "GEM15_dsm")):
-            p["md_name"].value = f"GEM15_{product}"
+        # A blank mosaic name is filled in at run time from the product and the
+        # coordinate system (auto_mosaic_name): the CRS needs the catalogue.
 
     def updateMessages(self, params):
         p = _by_name(params)
@@ -777,7 +807,7 @@ class AddGEM15ForExtent:
         if mode == MOSAIC and _is_basic():
             p["mode"].setErrorMessage("Mosaic datasets need a Standard or Advanced licence; "
                                       "choose 'Separate layers' or 'VRT file'.")
-        needed = {MOSAIC: ("acs", "gdb", "md_name"), LAYERS: ("acs",), VRT: ("vrt_folder",)}
+        needed = {MOSAIC: ("acs", "gdb"), LAYERS: ("acs",), VRT: ("vrt_folder",)}
         for key in needed.get(mode, ()):
             if not p[key].value:
                 p[key].setErrorMessage(f"Required for '{mode}'. Make the .acs with "
@@ -812,7 +842,7 @@ class AddGEM15ForExtent:
                 p["out_md"].value = add_to_mosaic(
                     tiles, bbox, product, p["acs"].valueAsText, p["gdb"].valueAsText,
                     p["md_name"].valueAsText, p["sr"].value)
-                _log("Tip: turn on DRA on the layer's symbology if the stretch looks flat (A4).")
+                _log("Tip: turn on DRA on the layer's symbology if the stretch looks flat.")
                 return
             m = active_map()
             if mode == LAYERS:
@@ -839,16 +869,24 @@ def acs_paths(acs, tiles, product):
     rasters, kept = cloud_paths(acs, [t.asset(product).href for t in tiles], arcpy.Exists)
     if not arcpy.Exists(rasters[0]):
         arcpy.AddWarning(f"Could not confirm {rasters[0]} exists; check the .acs "
-                         "bucket/folder settings (A1). Continuing anyway.")
+                         "bucket/folder settings. Continuing anyway.")
     if kept:
         _log("Connection has no 'gem-15' folder set; added it to paths.")
     return rasters
 
 
-def add_to_mosaic(tiles, bbox, product, acs, gdb, name, sr=None):
+def add_to_mosaic(tiles, bbox, product, acs, gdb, name=None, sr=None):
     """Create or extend a mosaic dataset referencing the tiles through the .acs.
+    name blank: GEM15_<product>_<CRS>, the CRS being `sr` or the automatic
+    choice, so repeat runs in one zone share a mosaic (A6).
     sr None: an existing mosaic keeps its CRS; a new one gets the automatic
     choice (A6). Raises Gem15Error if the tiles cannot go in (A6)."""
+    if not name:
+        if sr is None:
+            sr, choice = auto_sr(bbox, tiles)
+            _log("Coordinate system (automatic): " + choice.describe())
+        name = auto_mosaic_name(product, sr)
+        _log(f"Mosaic dataset name (automatic): {name}")
     md = os.path.join(gdb, name)
     exists = arcpy.Exists(md)
     if exists:
@@ -863,15 +901,15 @@ def add_to_mosaic(tiles, bbox, product, acs, gdb, name, sr=None):
     bad = zone_mismatch(sr_utm_zone(md_sr), epsgs)
     if bad:
         try:
-            hint = " Automatic choice for this extent: " + gcrs.auto_crs(bbox, epsgs).name + "."
+            suggest = f"'{auto_mosaic_name(product, auto_sr(bbox, tiles)[0])}'"
         except Gem15Error:
-            hint = ""
+            suggest = "a mosaic named after this extent's coordinate system"
         raise Gem15Error(
-            f"'{name}' is in UTM zone {sr_utm_zone(md_sr)}, but these tiles are in "
-            f"zone(s) {bad}; ArcGIS cannot add rasters outside a UTM zone's valid "
-            "extent (A6). Use a new mosaic name with a CRS that covers them all "
-            "(leave the coordinate system blank for the automatic choice), such as "
-            "GDA2020 / GA LCC (EPSG 7845) for a mosaic covering all of Australia." + hint)
+            f"'{name}' is in UTM zone {sr_utm_zone(md_sr)}, but these tiles are in zone "
+            f"{', '.join(str(z) for z in bad)}, too far away for ArcGIS to add to it. "
+            f"Clear 'Mosaic dataset name' to use or create {suggest}, or type a new name "
+            "and choose a coordinate system that covers both areas, such as "
+            "GDA2020 / GA LCC (EPSG 7845) for Australia.")
     rasters = acs_paths(acs, tiles, product)
     if not exists:
         arcpy.management.CreateMosaicDataset(
@@ -949,12 +987,12 @@ class TerrainStack:
         if "lrm" in keys and method != "focal":
             arcpy.AddWarning("No Spatial Analyst or Image Analyst licence: the LRM uses a "
                              "convolution, which leaves NoData within the radius of any "
-                             "NoData pixel (A10).")
+                             "NoData pixel.")
         files = terrain_layer_files(src, label, keys, folder, radius, alt, method)
         for f in files:
             _log("Wrote " + f)
         if "lrm" in keys:
-            _log(f"The live LRM is drawn only at 1:{LIVE_LRM_MIN_SCALE:,} and closer (A9).")
+            _log(f"The live LRM is drawn only at 1:{LIVE_LRM_MIN_SCALE:,} and closer.")
         m = active_map()
         if m is not None:
             add_layer_files(m, files, f"GEM-15 terrain: {label}")
