@@ -1,0 +1,100 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<metadata xml:lang="en">
+  <Esri>
+    <ArcGISFormat>1.0</ArcGISFormat>
+    <SyncOnce>TRUE</SyncOnce>
+  </Esri>
+  <tool name="AddGEM15ForExtent" displayname="Add GEM-15 for Extent" toolboxalias="gem15" xmlns="">
+    <parameters>
+      <param name="extent" displayname="Extent" type="Optional" direction="Input" datatype="GPExtent">
+        <dialogReference>
+          <para>Area to cover. Leave blank for the current map view.</para>
+        </dialogReference>
+      </param>
+      <param name="product" displayname="Product" type="Required" direction="Input" datatype="GPString">
+        <dialogReference>
+          <para>DTM: the bare-ground surface, predicted by machine learning; use it for fault mapping. DSM: the top of trees and buildings (five bands, about five times the data to stream).</para>
+        </dialogReference>
+      </param>
+      <param name="mode" displayname="Output Type" type="Required" direction="Input" datatype="GPString">
+        <dialogReference>
+          <para>Mosaic dataset: one seamless layer, best for large areas (Standard or Advanced licence). Separate layers: one layer per 1-degree tile. VRT file: one small file streaming all tiles, any licence, slower to draw zoomed out.</para>
+        </dialogReference>
+      </param>
+      <param name="acs" displayname="Cloud Storage Connection (.acs)" type="Optional" direction="Input" datatype="DEFile">
+        <dialogReference>
+          <para>Connection to the bucket. Leave blank to use (or make) gem15.acs in the project's home folder.</para>
+        </dialogReference>
+      </param>
+      <param name="gdb" displayname="Geodatabase for Mosaic Dataset" type="Optional" direction="Input" datatype="DEWorkspace">
+        <dialogReference>
+          <para>Geodatabase for the mosaic dataset (default: the project's).</para>
+        </dialogReference>
+      </param>
+      <param name="md_name" displayname="Mosaic Dataset Name" type="Optional" direction="Input" datatype="GPString">
+        <dialogReference>
+          <para>Leave blank to name it after its coordinate system (e.g. GEM15_dtm_UTM55S), so later runs in the same zone add to the same mosaic and an area in another zone gets its own.</para>
+        </dialogReference>
+      </param>
+      <param name="sr" displayname="Coordinate System" type="Optional" direction="Input" datatype="GPSpatialReference">
+        <dialogReference>
+          <para>Leave blank so tiles in one UTM zone keep their own 15 m grid. Across zones the tool picks GDA2020 / GA LCC (Australia), NZTM2000 (New Zealand) or a projection centred on your area. Choose a projected system in metres, never degrees.</para>
+        </dialogReference>
+      </param>
+      <param name="vrt_folder" displayname="Folder for VRT File" type="Optional" direction="Input" datatype="DEFolder">
+        <dialogReference>
+          <para>Folder for the VRT file (default: the gem15 folder in the project's home folder).</para>
+        </dialogReference>
+      </param>
+      <param name="band" displayname="DSM Band" type="Optional" direction="Input" datatype="GPString">
+        <dialogReference>
+          <para>Which DSM band: dsm (the surface), its 5th, 50th or 95th percentile, or dsm_std (the spread of heights within each pixel).</para>
+        </dialogReference>
+      </param>
+      <param name="out_md" displayname="Output mosaic dataset" type="Derived" direction="Output" datatype="DEMosaicDataset">
+        <dialogReference>
+          <para>The mosaic dataset.</para>
+        </dialogReference>
+      </param>
+      <param name="out_paths" displayname="Output raster paths" type="Derived" direction="Output" datatype="GPString">
+        <dialogReference>
+          <para>The rasters added (tiles or the VRT).</para>
+        </dialogReference>
+      </param>
+      <param name="tile_edges" displayname="Add Tile Edges" type="Optional" direction="Input" datatype="GPBoolean">
+        <dialogReference>
+          <para>Also show the tiles' outlines, where seams between acquisitions can look like scarps.</para>
+        </dialogReference>
+      </param>
+    </parameters>
+    <summary>
+      <para>Add the GEM-15 tiles covering an extent as one mosaic dataset (referenced from the cloud), as separate layers, or as a VRT file that streams them.</para>
+    </summary>
+    <usage>
+      <bullet_item>Mosaic datasets need a Standard or Advanced licence. Zoomed out over more than about 20 tiles, a mosaic shows tile outlines only: zoom in.</bullet_item>
+      <bullet_item>Nothing is downloaded up front: the layers read only what they draw.</bullet_item>
+      <bullet_item>Add a hillshade and local relief model with Terrain Stack.</bullet_item>
+    </usage>
+  </tool>
+  <dataIdInfo>
+    <idCitation>
+      <resTitle>Add GEM-15 for Extent</resTitle>
+    </idCitation>
+    <idPurp>Add the GEM-15 tiles covering an extent as one mosaic dataset (referenced from the cloud), as separate layers, or as a VRT file that streams them.</idPurp>
+    <searchKeys>
+      <keyword>GEM-15</keyword>
+      <keyword>elevation</keyword>
+      <keyword>DEM</keyword>
+      <keyword>active faults</keyword>
+      <keyword>hillshade</keyword>
+    </searchKeys>
+  </dataIdInfo>
+  <distInfo>
+    <distFormat>
+      <formatName>ArcToolbox Tool</formatName>
+    </distFormat>
+  </distInfo>
+  <mdHrLv>
+    <ScopeCd value="005" />
+  </mdHrLv>
+</metadata>

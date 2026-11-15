@@ -1,0 +1,110 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<metadata xml:lang="en">
+  <Esri>
+    <ArcGISFormat>1.0</ArcGISFormat>
+    <SyncOnce>TRUE</SyncOnce>
+  </Esri>
+  <tool name="ClipForAnalysis" displayname="Clip for Analysis" toolboxalias="gem15" xmlns="">
+    <parameters>
+      <param name="extent" displayname="Extent" type="Optional" direction="Input" datatype="GPExtent">
+        <dialogReference>
+          <para>Area to cover. Leave blank for the current map view.</para>
+        </dialogReference>
+      </param>
+      <param name="product" displayname="Product" type="Required" direction="Input" datatype="GPString">
+        <dialogReference>
+          <para>DTM: the bare-ground surface, predicted by machine learning; use it for fault mapping. DSM: the top of trees and buildings (five bands, about five times the data to stream).</para>
+        </dialogReference>
+      </param>
+      <param name="band" displayname="DSM Band" type="Optional" direction="Input" datatype="GPString">
+        <dialogReference>
+          <para>Which DSM band: dsm (the surface), its 5th, 50th or 95th percentile, or dsm_std (the spread of heights within each pixel).</para>
+        </dialogReference>
+      </param>
+      <param name="out_tif" displayname="Output GeoTIFF" type="Required" direction="Output" datatype="DERasterDataset">
+        <dialogReference>
+          <para>The GeoTIFF to write (in a folder, not a geodatabase).</para>
+        </dialogReference>
+      </param>
+      <param name="sr" displayname="Coordinate System" type="Optional" direction="Input" datatype="GPSpatialReference">
+        <dialogReference>
+          <para>Leave blank to keep the tiles' native UTM grid (one zone) or pick one automatically. Choose a projected system in metres, never degrees.</para>
+        </dialogReference>
+      </param>
+      <param name="derivatives" displayname="Also Write" type="Optional" direction="Input" datatype="GPString">
+        <dialogReference>
+          <para>Also write these as GeoTIFFs beside the clip: Hillshade (lit from the chosen sun), slope in degrees (added switched off) and local relief model (LRM: height above or below the local mean, blue to red over +/- 2.5 m).</para>
+        </dialogReference>
+      </param>
+      <param name="lrm_radius" displayname="LRM Radius (m)" type="Optional" direction="Input" datatype="GPDouble">
+        <dialogReference>
+          <para>Each pixel's height minus the mean height within this distance. Smaller radii show narrow features: 150 m for offset channels and narrow scarps, 300 m for scarps tens of metres wide, 1000 m for broad scarps and fold scarps (slow when live).</para>
+        </dialogReference>
+      </param>
+      <param name="altitude" displayname="Sun Altitude (degrees)" type="Optional" direction="Input" datatype="GPDouble">
+        <dialogReference>
+          <para>Height of the sun above the horizon, in degrees. A low sun brings out low scarps: about 20 on plains, 30-35 in steep country.</para>
+        </dialogReference>
+      </param>
+      <param name="max_mb" displayname="Download Limit (MB)" type="Optional" direction="Input" datatype="GPDouble">
+        <dialogReference>
+          <para>The tool stops before reading anything if the estimated download is larger. 0 means no limit.</para>
+        </dialogReference>
+      </param>
+      <param name="out_derivatives" displayname="Derivative GeoTIFFs" type="Derived" direction="Output" datatype="DERasterDataset">
+        <dialogReference>
+          <para>The derivative GeoTIFFs written.</para>
+        </dialogReference>
+      </param>
+      <param name="illumination" displayname="Illumination" type="Optional" direction="Input" datatype="GPString">
+        <dialogReference>
+          <para>Multidirectional lights the surface from several directions, so no scarp orientation is hidden. A single sun, or one shining across a fault trend, gives scarps facing it up to three times the contrast.</para>
+        </dialogReference>
+      </param>
+      <param name="azimuth" displayname="Sun Azimuth (degrees)" type="Optional" direction="Input" datatype="GPDouble">
+        <dialogReference>
+          <para>Direction the sun shines from, in degrees clockwise from north (for a single sun). 315 (north-west) is usual.</para>
+        </dialogReference>
+      </param>
+      <param name="fault_trend" displayname="Fault Trend (degrees)" type="Optional" direction="Input" datatype="GPDouble">
+        <dialogReference>
+          <para>Trend of the fault you are mapping, in degrees (either direction along it, e.g. 30 for a NNE-SSW fault). The sun is put at right angles to it, on the side nearer north-west, so relief does not look inverted.</para>
+        </dialogReference>
+      </param>
+      <param name="z_factor" displayname="Vertical Exaggeration" type="Optional" direction="Input" datatype="GPDouble">
+        <dialogReference>
+          <para>Vertical exaggeration of the hillshade. 1 shows true relief; 2-3 brings out subtle scarps on Australian plains, along with the DTM's noise.</para>
+        </dialogReference>
+      </param>
+    </parameters>
+    <summary>
+      <para>Download the GEM-15 pixels for an extent into a local GeoTIFF, after estimating the download, with optional hillshade, slope and local relief model GeoTIFFs.</para>
+    </summary>
+    <usage>
+      <bullet_item>Tiles in one UTM zone keep their native 15 m grid; across zones they are resampled (bilinear), which smooths scarp faces: measure on a single-zone clip where you can.</bullet_item>
+      <bullet_item>The DTM costs roughly 150 MB per 1-degree cell at Australian latitudes; the DSM about five times that. Cancel stops the download.</bullet_item>
+      <bullet_item>Draw the extent a little larger than you need: near its edge the LRM uses part of its circle.</bullet_item>
+    </usage>
+  </tool>
+  <dataIdInfo>
+    <idCitation>
+      <resTitle>Clip for Analysis</resTitle>
+    </idCitation>
+    <idPurp>Download the GEM-15 pixels for an extent into a local GeoTIFF, after estimating the download, with optional hillshade, slope and local relief model GeoTIFFs.</idPurp>
+    <searchKeys>
+      <keyword>GEM-15</keyword>
+      <keyword>elevation</keyword>
+      <keyword>DEM</keyword>
+      <keyword>active faults</keyword>
+      <keyword>hillshade</keyword>
+    </searchKeys>
+  </dataIdInfo>
+  <distInfo>
+    <distFormat>
+      <formatName>ArcToolbox Tool</formatName>
+    </distFormat>
+  </distInfo>
+  <mdHrLv>
+    <ScopeCd value="005" />
+  </mdHrLv>
+</metadata>

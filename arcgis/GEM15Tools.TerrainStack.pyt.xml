@@ -1,0 +1,90 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<metadata xml:lang="en">
+  <Esri>
+    <ArcGISFormat>1.0</ArcGISFormat>
+    <SyncOnce>TRUE</SyncOnce>
+  </Esri>
+  <tool name="TerrainStack" displayname="Terrain Stack" toolboxalias="gem15" xmlns="">
+    <parameters>
+      <param name="in_raster" displayname="Input DEM" type="Required" direction="Input" datatype="GPRasterLayer">
+        <dialogReference>
+          <para>The elevation layer: a GEM-15 mosaic dataset, VRT or clip.</para>
+        </dialogReference>
+      </param>
+      <param name="derivatives" displayname="Layers" type="Required" direction="Input" datatype="GPString">
+        <dialogReference>
+          <para>Hillshade (lit from the chosen sun), slope in degrees (added switched off) and local relief model (LRM: height above or below the local mean, blue to red over +/- 2.5 m).</para>
+        </dialogReference>
+      </param>
+      <param name="lrm_radius" displayname="LRM Radius (m)" type="Required" direction="Input" datatype="GPDouble">
+        <dialogReference>
+          <para>Each pixel's height minus the mean height within this distance. Smaller radii show narrow features: 150 m for offset channels and narrow scarps, 300 m for scarps tens of metres wide, 1000 m for broad scarps and fold scarps (slow when live).</para>
+        </dialogReference>
+      </param>
+      <param name="altitude" displayname="Sun Altitude (degrees)" type="Required" direction="Input" datatype="GPDouble">
+        <dialogReference>
+          <para>Height of the sun above the horizon, in degrees. A low sun brings out low scarps: about 20 on plains, 30-35 in steep country.</para>
+        </dialogReference>
+      </param>
+      <param name="out_folder" displayname="Folder for Layer Files (.lyrx)" type="Optional" direction="Input" datatype="DEFolder">
+        <dialogReference>
+          <para>Folder for the layer files (default: the gem15 folder in the project's home folder).</para>
+        </dialogReference>
+      </param>
+      <param name="out_layers" displayname="Layer files" type="Derived" direction="Output" datatype="DEFile">
+        <dialogReference>
+          <para>The layer files written.</para>
+        </dialogReference>
+      </param>
+      <param name="illumination" displayname="Illumination" type="Optional" direction="Input" datatype="GPString">
+        <dialogReference>
+          <para>Multidirectional lights the surface from several directions, so no scarp orientation is hidden. A single sun, or one shining across a fault trend, gives scarps facing it up to three times the contrast.</para>
+        </dialogReference>
+      </param>
+      <param name="azimuth" displayname="Sun Azimuth (degrees)" type="Optional" direction="Input" datatype="GPDouble">
+        <dialogReference>
+          <para>Direction the sun shines from, in degrees clockwise from north (for a single sun). 315 (north-west) is usual.</para>
+        </dialogReference>
+      </param>
+      <param name="fault_trend" displayname="Fault Trend (degrees)" type="Optional" direction="Input" datatype="GPDouble">
+        <dialogReference>
+          <para>Trend of the fault you are mapping, in degrees (either direction along it, e.g. 30 for a NNE-SSW fault). The sun is put at right angles to it, on the side nearer north-west, so relief does not look inverted.</para>
+        </dialogReference>
+      </param>
+      <param name="z_factor" displayname="Vertical Exaggeration" type="Optional" direction="Input" datatype="GPDouble">
+        <dialogReference>
+          <para>Vertical exaggeration of the hillshade. 1 shows true relief; 2-3 brings out subtle scarps on Australian plains, along with the DTM's noise.</para>
+        </dialogReference>
+      </param>
+    </parameters>
+    <summary>
+      <para>Add live layers over a GEM-15 DEM: hillshade, slope and local relief model, computed as you pan with fixed colour ranges. Nothing is downloaded beyond what is drawn.</para>
+    </summary>
+    <usage>
+      <bullet_item>The LRM is drawn at 1:50,000 and closer. Without Spatial or Image Analyst it uses a convolution, blank within the radius of any gap (water).</bullet_item>
+      <bullet_item>Layer files (.lyrx) are saved too, so the layers can be added to other maps.</bullet_item>
+      <bullet_item>Run it again after adding tiles to a mosaic: the layers are rebuilt to cover them.</bullet_item>
+    </usage>
+  </tool>
+  <dataIdInfo>
+    <idCitation>
+      <resTitle>Terrain Stack</resTitle>
+    </idCitation>
+    <idPurp>Add live layers over a GEM-15 DEM: hillshade, slope and local relief model, computed as you pan with fixed colour ranges. Nothing is downloaded beyond what is drawn.</idPurp>
+    <searchKeys>
+      <keyword>GEM-15</keyword>
+      <keyword>elevation</keyword>
+      <keyword>DEM</keyword>
+      <keyword>active faults</keyword>
+      <keyword>hillshade</keyword>
+    </searchKeys>
+  </dataIdInfo>
+  <distInfo>
+    <distFormat>
+      <formatName>ArcToolbox Tool</formatName>
+    </distFormat>
+  </distInfo>
+  <mdHrLv>
+    <ScopeCd value="005" />
+  </mdHrLv>
+</metadata>

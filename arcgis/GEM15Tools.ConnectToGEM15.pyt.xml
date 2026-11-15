@@ -1,0 +1,64 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<metadata xml:lang="en">
+  <Esri>
+    <ArcGISFormat>1.0</ArcGISFormat>
+    <SyncOnce>TRUE</SyncOnce>
+  </Esri>
+  <tool name="ConnectToGEM15" displayname="Connect to GEM-15" toolboxalias="gem15" xmlns="">
+    <parameters>
+      <param name="out_folder" displayname="Connection File Location" type="Required" direction="Input" datatype="DEFolder">
+        <dialogReference>
+          <para>Folder for the connection file (default: the project's home folder, where the other tools look for it).</para>
+        </dialogReference>
+      </param>
+      <param name="out_name" displayname="Connection File Name" type="Required" direction="Input" datatype="GPString">
+        <dialogReference>
+          <para>Name of the connection file.</para>
+        </dialogReference>
+      </param>
+      <param name="replace" displayname="Replace Existing File" type="Optional" direction="Input" datatype="GPBoolean">
+        <dialogReference>
+          <para>Make the file again even if it exists.</para>
+        </dialogReference>
+      </param>
+      <param name="clear_cache" displayname="Clear Saved Tile Catalogue" type="Optional" direction="Input" datatype="GPBoolean">
+        <dialogReference>
+          <para>Delete the saved copy of the tile catalogue, so it is fetched again. Only needed if Google changes the catalogue.</para>
+        </dialogReference>
+      </param>
+      <param name="out_acs" displayname="Connection file" type="Derived" direction="Output" datatype="DEFile">
+        <dialogReference>
+          <para>The connection file.</para>
+        </dialogReference>
+      </param>
+    </parameters>
+    <summary>
+      <para>Create gem15.acs, an anonymous, read-only connection to the public GEM-15 bucket. The other tools make it themselves when needed.</para>
+    </summary>
+    <usage>
+      <bullet_item>No account or key is needed: the bucket is public.</bullet_item>
+      <bullet_item>Use this to make a connection under another name or folder, or to clear the saved tile catalogue.</bullet_item>
+    </usage>
+  </tool>
+  <dataIdInfo>
+    <idCitation>
+      <resTitle>Connect to GEM-15</resTitle>
+    </idCitation>
+    <idPurp>Create gem15.acs, an anonymous, read-only connection to the public GEM-15 bucket. The other tools make it themselves when needed.</idPurp>
+    <searchKeys>
+      <keyword>GEM-15</keyword>
+      <keyword>elevation</keyword>
+      <keyword>DEM</keyword>
+      <keyword>active faults</keyword>
+      <keyword>hillshade</keyword>
+    </searchKeys>
+  </dataIdInfo>
+  <distInfo>
+    <distFormat>
+      <formatName>ArcToolbox Tool</formatName>
+    </distFormat>
+  </distInfo>
+  <mdHrLv>
+    <ScopeCd value="005" />
+  </mdHrLv>
+</metadata>
