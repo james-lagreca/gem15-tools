@@ -5,7 +5,8 @@ gem15core - shared, dependency-free core of the GEM-15 tools.
 Used by the ArcGIS Pro toolbox, the QGIS plugin and the command-line VRT
 builder. Every module here uses the Python standard library only and runs on
 Python 3.9 or later (QGIS 3.28 ships 3.9), except `gdalops`, which needs the
-GDAL Python bindings and is only imported by code that needs GDAL.
+GDAL Python bindings, and `profile`, which needs numpy; both ship with ArcGIS
+Pro and QGIS and are only imported by code that needs them.
 
 Modules
 -------
@@ -18,6 +19,7 @@ terrain  : default settings for hillshade, slope and local relief
 vrt      : write a GDAL VRT straight from catalogue metadata (no GDAL needed)
 download : estimate how much a clip will download, before reading anything
 gdalops  : GDAL-based warp and clip (optional; needs osgeo)
+profile  : swath profiles across a scarp and scarp height (optional; needs numpy)
 
 Copies of this package live inside the ArcGIS toolbox and QGIS plugin
 folders. Edit `core/gem15core/` only, then run `python tools/vendor_core.py`.

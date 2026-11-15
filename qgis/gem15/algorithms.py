@@ -22,7 +22,7 @@ from qgis.core import (QgsProcessingAlgorithm,
                        QgsProcessingUtils, QgsRasterLayer)
 from qgis.PyQt.QtCore import QCoreApplication
 
-from . import estimate, view
+from . import estimate, network, settings, view
 from . import layers as layers_mod
 from .compat import enum
 from .gem15core import (ATTRIBUTION, CITATION, PIXEL_M, STAC_COLLECTION_URL, Gem15Error,
@@ -135,10 +135,13 @@ class _Base(QgsProcessingAlgorithm):
         n = view.cell_count(bbox)
         feedback.pushInfo(tr(f"Area (lon/lat W, S, E, N): {', '.join(f'{v:.4f}' for v in bbox)}"))
         if n > 100:
-            feedback.pushWarning(tr(f"The area spans {n} one-degree cells; the catalogue "
-                                    "lookup may take a while the first time (it is cached)."))
+            feedback.pushInfo(tr(f"The area spans {n} one-degree cells; the catalogue "
+                                 "lookup may take a while the first time (it is cached)."))
         try:
-            tiles = stac.find_tiles(bbox, product, collection_url=url)
+            tiles = stac.find_tiles(
+                bbox, product, collection_url=url, fetch=network.fetcher(),
+                max_cells=settings.MAX_PROCESSING_CELLS, is_cancelled=feedback.isCanceled,
+                progress=lambda done, total: feedback.setProgress(10.0 * done / total))
         except Gem15Error as e:
             raise QgsProcessingException(str(e))
         if not tiles:

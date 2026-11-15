@@ -93,6 +93,7 @@ Assumptions (flagged; verify if something looks wrong):
      255 x sin(altitude), as for a single sun.
 """
 
+import hashlib
 import json
 import math
 import os
@@ -107,22 +108,72 @@ _here = os.path.dirname(os.path.abspath(__file__))
 if _here not in sys.path:
     sys.path.insert(0, _here)
 
+
+def _core_fingerprint(folder):
+    """Hash of the gem15core sources in a folder (line endings ignored)."""
+    h = hashlib.sha1()
+    for name in sorted(os.listdir(folder)):
+        if name.endswith(".py"):
+            with open(os.path.join(folder, name), "rb") as fh:
+                h.update(name.encode() + fh.read().replace(b"\r\n", b"\n"))
+    return h.hexdigest()
+
+
+# Pro keeps imported modules for the whole session, so after the toolbox
+# folder is updated (or another copy was loaded first) a refresh would still
+# run the old gem15core, failing on anything new or silently behaving the old
+# way. Re-import it only when it differs from the copy beside this file:
+# re-importing an unchanged core would give its classes (Gem15Error) new
+# identities and break `except` clauses in code that imported them earlier.
+try:
+    _core_fp = _core_fingerprint(os.path.join(_here, "gem15core"))
+except OSError:
+    _core_fp = None
+_loaded_core = sys.modules.get("gem15core")
+if _loaded_core is not None and _core_fp is not None:
+    _loaded_fp = getattr(_loaded_core, "_toolbox_fingerprint", None)
+    if _loaded_fp is None:             # imported by something else: compare its files
+        try:
+            _loaded_fp = _core_fingerprint(os.path.dirname(_loaded_core.__file__))
+        except (OSError, TypeError):
+            _loaded_fp = ""
+    if _loaded_fp != _core_fp:
+        for _name in [m for m in sys.modules if m == "gem15core" or m.startswith("gem15core.")]:
+            del sys.modules[_name]
+
 from gem15core import BUCKET, BUCKET_URL, DATA_FOLDER, DSM_BANDS, Gem15Error  # noqa: E402
 from gem15core import crs as gcrs  # noqa: E402
 from gem15core import download  # noqa: E402
 from gem15core import extent as gext  # noqa: E402
 from gem15core import paths as gpaths  # noqa: E402
 from gem15core import stac, terrain, vrt  # noqa: E402
+import gem15core as _core  # noqa: E402
+
+if _core_fp is not None:
+    _core._toolbox_fingerprint = _core_fp       # what was loaded, for the next refresh
 
 DEFAULT_ACS_NAME = "gem15.acs"  # looked for in the project home folder
 WARN_CELLS = 60                 # warn above this many 1-degree cells
+MAX_CELLS = 1500                # refuse before any request (Australia's box is ~1400)
 PAD_DEG = 0.005                 # pad the extent slightly (~500 m) after projecting
 COLLECTION_ENV = "GEM15_COLLECTION_URL"  # catalogue override (tests or a mirror)
 PROBE_TILE = BUCKET_URL + DATA_FOLDER + "/m40_p140/w144sm38/dtm/zall/mosaic.tif"  # A7
 LIVE_LRM_MIN_SCALE = 100000     # A9: live LRM not drawn when zoomed out beyond 1:100,000
-DEFAULT_MAX_MB = 1000.0         # Clip for Analysis stops above this download unless raised
+DEFAULT_MAX_MB = 2000.0         # Clip for Analysis stops above this download (as QGIS)
+NEAR_LIMIT = 0.8                # estimates above this share of the limit are warnings
+
+
+def clip_limit(value):
+    """The download limit in MB from the parameter: blank uses the default,
+    0 (or less) means no limit, as in the QGIS plugin."""
+    if value is None or value == "":
+        return DEFAULT_MAX_MB
+    v = float(value)
+    return float("inf") if v <= 0 else v
 
 MOSAIC, LAYERS, VRT = "Mosaic dataset", "Separate layers", "VRT file"
+NO_TILES = ("No GEM-15 tiles cover this extent. GEM-15 covers land between about 61 S "
+            "and 84 N; zoom to land, or check the extent's coordinate system.")
 
 # Terrain derivatives: key, label in the tools, in drawing order (bottom first).
 DERIVATIVES = (("hillshade", "Hillshade (multidirectional)"),
@@ -134,13 +185,38 @@ DERIV_LABELS = [label for _, label in DERIVATIVES]
 # --------------------------------------------------------------------------
 # Catalogue
 # --------------------------------------------------------------------------
-def find_cells(bbox, product, fetch=None, collection_url=None):
-    """Tiles (gem15core.stac.Tile) with a `product` asset whose cell overlaps bbox."""
-    kw = {"fetch": fetch}
+def _cancelled():
+    """True once the user has pressed Cancel on the running tool (Pro 3.x)."""
+    env = getattr(arcpy, "env", None)
+    return bool(getattr(env, "isCancelled", False))
+
+
+def _lookup_progress(done, total):
+    """Step progressor while the catalogue documents arrive."""
+    try:
+        if done == 1:
+            arcpy.SetProgressor("step", "Reading the GEM-15 tile catalogue...", 0, total, 1)
+        if done == 1 or done == total or done % 10 == 0:
+            arcpy.SetProgressorPosition(done)
+    except Exception:                  # no progressor (e.g. a stub arcpy in tests)
+        pass
+
+
+def find_cells(bbox, product, fetch=None, collection_url=None, max_cells=MAX_CELLS):
+    """Tiles (gem15core.stac.Tile) with a `product` asset whose cell overlaps bbox.
+    Refuses areas of more than max_cells 1-degree cells before any request, and
+    stops if the user cancels while the catalogue is read."""
+    kw = {"fetch": fetch, "max_cells": max_cells, "progress": _lookup_progress,
+          "is_cancelled": _cancelled}
     collection_url = collection_url or os.environ.get(COLLECTION_ENV)
     if collection_url:
         kw["collection_url"] = collection_url
-    return stac.find_tiles(bbox, product, **kw)
+    tiles = stac.find_tiles(bbox, product, **kw)
+    try:
+        arcpy.ResetProgressor()
+    except Exception:
+        pass
+    return tiles
 
 
 def cloud_paths(acs, asset_urls, exists):
@@ -188,6 +264,27 @@ def extent_points_lonlat(ext, densify=11):
     return [(p.X, p.Y) for p in mp.projectAs(arcpy.SpatialReference(4326)).getPart()]
 
 
+def poles_inside(ext):
+    """(north, south): whether each pole lies inside an extent drawn in a
+    projected CRS (e.g. a polar stereographic map), whose outline alone would
+    give a box that stops short of the pole (gem15core.extent.include_poles)."""
+    sr = getattr(ext, "spatialReference", None)
+    code = int(getattr(sr, "factoryCode", 0) or 0) if sr is not None else 0
+    if sr is None or code == 4326 or getattr(sr, "type", "") == "Geographic":
+        return (False, False)
+    found = []
+    for lat in (90.0, -90.0):
+        try:
+            p = arcpy.PointGeometry(arcpy.Point(0.0, lat), arcpy.SpatialReference(4326)
+                                    ).projectAs(_source_sr(sr)).firstPoint
+            found.append(p is not None and math.isfinite(p.X) and math.isfinite(p.Y)
+                         and float(ext.XMin) <= p.X <= float(ext.XMax)
+                         and float(ext.YMin) <= p.Y <= float(ext.YMax))
+        except Exception:              # the pole cannot be projected (e.g. Mercator)
+            found.append(False)
+    return tuple(found)
+
+
 def extent_to_lonlat(ext, densify=11):
     """GPExtent value in any CRS -> padded (W, S, E, N) in degrees; W > E when
     the extent crosses the antimeridian (stac.find_tiles accepts that)."""
@@ -198,6 +295,7 @@ def extent_to_lonlat(ext, densify=11):
     except Gem15Error as e:
         raise ValueError("Could not convert the extent to longitude/latitude; "
                          "set the extent's coordinate system or enter it in degrees.") from e
+    bbox = gext.include_poles(bbox, *poles_inside(ext))
     return gext.pad(bbox, PAD_DEG)
 
 
@@ -639,9 +737,10 @@ def clip_estimate(bbox, tiles, product):
     return download.estimate(tiles, product, bounds)
 
 
-def clip_to_tif(bbox, tiles, product, band, out_tif, sr=None, log=None):
+def clip_to_tif(bbox, tiles, product, band, out_tif, sr=None, log=None, callback=None):
     """Write a compressed GeoTIFF of the extent: the tiles' native UTM grid
-    if they share one zone, else `sr` or the automatic CRS (A6)."""
+    if they share one zone, else `sr` or the automatic CRS (A6).
+    callback: GDAL progress function; returning 0 cancels (Gem15Error "Cancelled.")."""
     from gem15core import gdalops                      # needs GDAL (osgeo)
     folder = os.path.dirname(os.path.abspath(out_tif))
     os.makedirs(folder, exist_ok=True)
@@ -649,7 +748,7 @@ def clip_to_tif(bbox, tiles, product, band, out_tif, sr=None, log=None):
         src = gdalops.build_vrt(bbox, os.path.join(tmp, "clip.vrt"), product, band,
                                 dst_crs=sr_to_gdal(sr) if sr is not None else None,
                                 tiles=tiles, log=log)
-        gdalops.clip_to_geotiff(src, out_tif, log=log)
+        gdalops.clip_to_geotiff(src, out_tif, log=log, callback=callback)
     return out_tif
 
 
@@ -696,6 +795,64 @@ def _log(msg):
     arcpy.AddMessage(msg)
 
 
+def _reports_errors(execute):
+    """Wrap a tool's execute so failures become tool error messages rather
+    than Python tracebacks: our own errors, a failed geoprocessing step, GDAL
+    errors and file errors (locked, read-only or OneDrive/network folders)."""
+    def wrapper(self, params, messages):
+        exec_error = getattr(arcpy, "ExecuteError", RuntimeError)
+        try:
+            return execute(self, params, messages)
+        except Gem15Error as e:
+            arcpy.AddError(str(e))
+        except exec_error:
+            arcpy.AddError(arcpy.GetMessages(2) or "A geoprocessing step failed.")
+        except OSError as e:
+            arcpy.AddError(f"{e}. Check the file is not open in a map or another program, "
+                           "and that the folder can be written to (OneDrive and network "
+                           "folders sometimes block writes).")
+        except RuntimeError as e:
+            arcpy.AddError(f"{e}")
+    wrapper.__name__, wrapper.__doc__ = execute.__name__, execute.__doc__
+    return wrapper
+
+
+def _gdal_progress(label):
+    """GDAL progress callback that drives Pro's progressor and stops GDAL
+    (by returning 0) when the user presses Cancel."""
+    try:
+        arcpy.SetProgressor("step", label, 0, 100, 1)
+    except Exception:
+        pass
+    last = [-1]
+
+    def callback(fraction, message, data):
+        pct = int(fraction * 100)
+        if pct != last[0]:
+            last[0] = pct
+            try:
+                arcpy.SetProgressorPosition(pct)
+            except Exception:
+                pass
+        return 0 if _cancelled() else 1
+    return callback
+
+
+def sr_problem(sr):
+    """Why a coordinate system cannot be used for 15 m pixels, or None: degrees
+    give a raster one pixel wide, and feet disagree with heights in metres."""
+    if sr is None:
+        return None
+    if getattr(sr, "type", "") == "Geographic":
+        return ("This coordinate system uses degrees. Choose a projected one in metres, "
+                "or leave it blank for the automatic choice.")
+    per_unit = float(getattr(sr, "metersPerUnit", 1.0) or 1.0)
+    if abs(per_unit - 1.0) > 1e-9:
+        return (f"This coordinate system is in {getattr(sr, 'linearUnitName', 'non-metre units')}"
+                "; GEM-15 heights are in metres. Choose one in metres, or leave it blank.")
+    return None
+
+
 # --------------------------------------------------------------------------
 # Toolbox
 # --------------------------------------------------------------------------
@@ -718,11 +875,13 @@ class ConnectToGEM15:
         name = _param("out_name", "Connection file name", "GPString", value=DEFAULT_ACS_NAME)
         replace = _param("replace", "Replace an existing file", "GPBoolean",
                          required=False, value=False)
+        clear = _param("clear_cache", "Clear the saved tile catalogue", "GPBoolean",
+                       required=False, value=False)
         out = _derived("out_acs", "Connection file", "DEFile")
         home = home_folder()
         if home:
             folder.value = home
-        return [folder, name, replace, out]
+        return [folder, name, replace, clear, out]
 
     def isLicensed(self):
         return True
@@ -731,16 +890,14 @@ class ConnectToGEM15:
         return
 
     def updateMessages(self, params):
-        p = _by_name(params)
-        folder, name = p["out_folder"].valueAsText, p["out_name"].valueAsText
-        if folder and name:
-            path = os.path.join(folder, name if name.lower().endswith(".acs") else name + ".acs")
-            if os.path.exists(path) and not p["replace"].value:
-                p["out_name"].setWarningMessage("This file exists and will be reused; tick "
-                                                "'Replace' to make it again.")
+        return                         # an existing file is simply reused: not a warning
 
+    @_reports_errors
     def execute(self, params, messages):
         p = _by_name(params)
+        if p["clear_cache"].value:
+            _log(f"Cleared {stac.clear_cache()} saved catalogue document(s); they are "
+                 "fetched again when next needed.")
         path, created = create_connection(p["out_folder"].valueAsText,
                                           p["out_name"].valueAsText, bool(p["replace"].value))
         _log(("Created " if created else "Kept existing ") + path)
@@ -816,13 +973,14 @@ class AddGEM15ForExtent:
                 p[key].setErrorMessage(f"Required for '{mode}'. Make the .acs with "
                                        "'Connect to GEM-15'." if key == "acs"
                                        else f"Required for '{mode}'.")
-        sr = p["sr"].value
-        if mode in (MOSAIC, VRT) and sr is not None and getattr(sr, "type", "") == "Geographic":
-            p["sr"].setWarningMessage(
-                "Geographic (degree) coordinates make hillshade and slope z-scaling wrong. "
-                "Leave blank for the automatic projected CRS, ideally the tiles' own UTM "
-                "zone, so nothing is resampled.")
+        problem = sr_problem(p["sr"].value) if mode in (MOSAIC, VRT) else None
+        if problem and mode == VRT:
+            p["sr"].setErrorMessage(problem)                  # would give a 1 px raster
+        elif problem:
+            p["sr"].setWarningMessage(problem + " (A mosaic dataset will still draw, but "
+                                      "hillshade and slope will be wrong.)")
 
+    @_reports_errors
     def execute(self, params, messages):
         p = _by_name(params)
         product, mode = p["product"].valueAsText, p["mode"].valueAsText
@@ -836,7 +994,7 @@ class AddGEM15ForExtent:
         try:
             tiles = find_cells(bbox, product)
             if not tiles:
-                raise Gem15Error("No GEM-15 cells intersect this extent (check coverage).")
+                raise Gem15Error(NO_TILES)
             _log(f"{len(tiles)} cell(s): " + ", ".join(t.item_id for t in tiles))
             if len(tiles) > WARN_CELLS:
                 arcpy.AddWarning(f"{len(tiles)} cells is a large area; display will be slow "
@@ -977,6 +1135,7 @@ class TerrainStack:
             except Exception:
                 pass
 
+    @_reports_errors
     def execute(self, params, messages):
         p = _by_name(params)
         desc = arcpy.Describe(p["in_raster"].valueAsText)
@@ -1063,19 +1222,24 @@ class ClipForAnalysis:
         if out and (not out.lower().endswith((".tif", ".tiff"))
                     or ".gdb" in os.path.dirname(out).lower()):
             p["out_tif"].setErrorMessage("Give a .tif file in a folder (not a geodatabase).")
+        problem = sr_problem(p["sr"].value)
+        if problem:
+            p["sr"].setErrorMessage(problem)
         if p["extent"].value is not None and p["product"].valueAsText:
             try:
                 mb = download.rough_mb(extent_to_lonlat(p["extent"].value),
                                        p["product"].valueAsText)
             except Exception:
                 return
-            limit = float(p["max_mb"].value or DEFAULT_MAX_MB)
-            msg = (f"Roughly {mb:,.0f} MB to download (from the extent's area; the tool "
-                   "works out a closer figure from the tiles before reading anything).")
-            if mb > limit:
-                msg += " That is over your limit, so the tool will stop unless you raise it."
-            p["extent"].setWarningMessage(msg)
+            limit = clip_limit(p["max_mb"].value)
+            if mb > NEAR_LIMIT * limit:        # warn only when it matters
+                over = mb > limit
+                p["extent"].setWarningMessage(
+                    f"Roughly {mb:,.0f} MB to download, "
+                    + ("over your limit, so the tool will stop unless you raise it."
+                       if over else f"close to your limit of {limit:,.0f} MB."))
 
+    @_reports_errors
     def execute(self, params, messages):
         p = _by_name(params)
         product = p["product"].valueAsText
@@ -1088,20 +1252,22 @@ class ClipForAnalysis:
             arcpy.AddError(str(e))
             return
         _log("Extent (lon/lat W, S, E, N): " + ", ".join(f"{v:.4f}" for v in bbox))
-        try:
-            tiles = find_cells(bbox, product)
-            if not tiles:
-                raise Gem15Error("No GEM-15 cells intersect this extent (check coverage).")
-            est = clip_estimate(bbox, tiles, product)
-            limit = float(p["max_mb"].value or DEFAULT_MAX_MB)
-            arcpy.AddWarning(f"Download: {est.describe()} (gem15core.download D1-D4).")
-            if est.mb > limit:
-                raise Gem15Error(f"That is more than your limit of {limit:,.0f} MB. Use a "
-                                 "smaller extent, or raise the limit.")
-            clip_to_tif(bbox, tiles, product, band, out_tif, p["sr"].value, log=_log)
-        except Gem15Error as e:
-            arcpy.AddError(str(e))
-            return
+        limit = clip_limit(p["max_mb"].value)
+        rough = download.rough_mb(bbox, product)
+        if rough > 2 * limit:                  # clearly too big: stop before any request
+            raise Gem15Error(f"Roughly {rough:,.0f} MB to download, more than your limit of "
+                             f"{limit:,.0f} MB. Use a smaller extent, or raise the limit.")
+        tiles = find_cells(bbox, product)
+        if not tiles:
+            raise Gem15Error(NO_TILES)
+        est = clip_estimate(bbox, tiles, product)
+        note = f"Download: {est.describe()}."
+        (arcpy.AddWarning if est.mb > NEAR_LIMIT * limit else _log)(note)
+        if est.mb > limit:
+            raise Gem15Error(f"That is more than your limit of {limit:,.0f} MB. Use a "
+                             "smaller extent, or raise the limit.")
+        clip_to_tif(bbox, tiles, product, band, out_tif, p["sr"].value, log=_log,
+                    callback=_gdal_progress("Downloading and writing the GeoTIFF..."))
         compute_statistics(out_tif)
         _log("Wrote " + out_tif)
         if keys:

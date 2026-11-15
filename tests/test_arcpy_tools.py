@@ -114,6 +114,27 @@ def horn_slope(z, px=15):
 # --------------------------------------------------------------------------
 # Extents and coordinate systems
 # --------------------------------------------------------------------------
+def test_extent_around_a_pole(pyt):
+    """A polar stereographic view containing the pole reaches it, at every
+    longitude (it stopped at 81.7 N before, missing northern tiles)."""
+    arctic = arcpy.SpatialReference(3995)
+    w, s, e, n = pyt.extent_to_lonlat(arcpy.Extent(-900000, -900000, 900000, 900000,
+                                                   spatial_reference=arctic))
+    assert n == 90 and (w, e) == (-180, 180) and s < 82
+    w, s, e, n = pyt.extent_to_lonlat(arcpy.Extent(1000000, -500000, 1500000, 0,
+                                                   spatial_reference=arctic))
+    assert n < 90                                               # beside the pole: unchanged
+
+
+def test_sr_problem_and_limit(pyt):
+    assert "degrees" in pyt.sr_problem(arcpy.SpatialReference(4326))
+    assert "Foot" in pyt.sr_problem(arcpy.SpatialReference(2227))       # US survey feet
+    assert pyt.sr_problem(arcpy.SpatialReference(7845)) is None
+    assert pyt.sr_problem(None) is None
+    assert pyt.clip_limit(None) == pyt.DEFAULT_MAX_MB and pyt.clip_limit(0) == float("inf")
+    assert pyt.clip_limit(50) == 50
+
+
 def test_extent_from_utm(pyt):
     ext = arcpy.Extent(300000, 5800000, 320000, 5815000,
                        spatial_reference=arcpy.SpatialReference(32755))
@@ -278,7 +299,7 @@ def test_clip_tool_native_grid(tb, catalogue, tmp_path):
     res = tb.ClipForAnalysis(lonlat_extent(AOI), "dtm", None, out, None,
                              ["Hillshade (multidirectional)", "Local relief model"],
                              300, 30, 1000)
-    assert "Download: about" in res.getMessages(1)        # the estimate, as a warning
+    assert "Download: about" in res.getMessages(0)        # the estimate, as information
     ds = gdal.Open(out)
     gt = ds.GetGeoTransform()
     assert gt[1] == 15 and gt[5] == -15 and gt[0] % 15 == 0 and gt[3] % 15 == 0

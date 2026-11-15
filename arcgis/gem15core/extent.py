@@ -96,6 +96,20 @@ def from_lonlat_points(points):
     return (plain[0], s, plain[1], n)
 
 
+def include_poles(bbox, north_inside=False, south_inside=False):
+    """Widen a box built from an extent's outline when the extent contains a
+    pole: its outline never reaches the pole, so the box would stop short of it
+    and miss a wedge of longitudes (e.g. a polar stereographic view of the
+    Arctic gave N 81.7 instead of 84). Callers test whether the pole lies in
+    the extent with their own projection library."""
+    w, s, e, n = bbox
+    if north_inside:
+        w, e, n = -180.0, 180.0, 90.0
+    if south_inside:
+        w, e, s = -180.0, 180.0, -90.0
+    return (w, s, e, n)
+
+
 def densified_ring(x0, y0, x1, y1, n=11):
     """Closed ring of points around a rectangle, n per side (corners shared),
     anticlockwise from (x0, y0) and back to it: 4 * (n - 1) + 1 points.

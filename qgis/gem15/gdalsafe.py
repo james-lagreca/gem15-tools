@@ -6,26 +6,21 @@ Two process-wide GDAL settings matter here (both checked 2026-11-15 on
 GDAL 3.6.4, as in QGIS 3.28.6, and on GDAL 3.9.2):
 
  S1. gdal.UseExceptions() is one flag for the whole process and every
-     thread. gem15core.gdalops turns it on when imported, but QGIS's own
-     Python code relies on it being off (DB Manager retries
-     gdal.OpenEx(..., OF_UPDATE) when it returns None), as may other
-     plugins. So this module imports gdalops, then puts the flag back as it
-     was. The plugin never turns exceptions on: it checks GDAL's results
-     itself (`check`), so its background tasks cannot change how GDAL
-     behaves for code running on the main thread.
+     thread, and QGIS's own Python code relies on it being off (DB Manager
+     retries gdal.OpenEx(..., OF_UPDATE) when it returns None), as may other
+     plugins. Neither gem15core.gdalops (its G6) nor this plugin ever turns
+     it on: both check GDAL's results themselves (`check`), so background
+     tasks cannot change how GDAL behaves for code on the main thread.
  S2. The remote-read options are applied only to paths in the GEM-15 bucket
      (gdalops.configure_remote, scoped), so the user's other rasters keep
-     their .ovr / .aux.xml side-car files.
+     their .ovr / .aux.xml side-car files. QGIS's HTTP proxy, if set, is
+     passed on for the bucket too (network N1).
 """
 
 from osgeo import gdal
 
-_before = gdal.GetUseExceptions()
-from .gem15core import gdalops  # noqa: E402  (turns GDAL exceptions on: undone below)
-if not _before:
-    gdal.DontUseExceptions()
-
-from .gem15core import Gem15Error  # noqa: E402
+from . import network
+from .gem15core import Gem15Error, gdalops
 
 _configured = None
 
@@ -35,7 +30,7 @@ def configure_remote():
     Returns "scoped" or "global" (GDAL < 3.5: only harmless options)."""
     global _configured
     if _configured is None:
-        _configured = gdalops.configure_remote(scoped=True)
+        _configured = gdalops.configure_remote(scoped=True, proxy=network.qgis_proxy())
     return _configured
 
 

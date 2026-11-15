@@ -25,7 +25,7 @@ try:                                  # Qt6 moved QAction to QtGui
 except ImportError:                   # Qt5
     from qgis.PyQt.QtWidgets import QAction
 
-from . import settings, view
+from . import network, settings, view
 from .gem15core import ATTRIBUTION, CITATION, VERTICAL_DATUM, Gem15Error
 
 MENU = "&GEM-15"
@@ -160,7 +160,7 @@ class Gem15Plugin:
             bar.pushCritical("GEM-15", tr(f"Cannot create the VRT folder: {e}"))
             return
         task = CurrentViewTask(bbox, kind, folder, settings.value("per_zone", False, bool),
-                               self._task_done)
+                               self._task_done, fetch=network.fetcher())
         self.tasks.add(task)
         QgsApplication.taskManager().addTask(task)
 

@@ -72,6 +72,16 @@ def cell_name(lon, lat):
     return f"w{'m' if x < 0 else ''}{abs(x)}s{'m' if y < 0 else ''}{abs(y)}"
 
 
+def count_for_bbox(bbox):
+    """Number of 1 x 1 degree cells a lon/lat box (W, S, E, N) overlaps; W > E
+    crosses 180. Counts sea too, so it is an upper bound on catalogue items:
+    cheap enough to check before any request."""
+    w, s, e, n = bbox
+    parts = [(w, e)] if w <= e else [(w, 180.0), (-180.0, e)]
+    rows = max(0, math.ceil(min(n, 90) - 1e-9) - math.floor(max(s, -90)))
+    return sum(max(0, math.ceil(b - 1e-9) - math.floor(a)) for a, b in parts) * rows
+
+
 def cell_names_for_bbox(bbox):
     """All 1-degree cell names whose area overlaps bbox (W, S, E, N), W < E.
 

@@ -112,23 +112,26 @@ def test_group_by_epsg():
 def test_fetcher_cache(tmp_path, monkeypatch):
     calls = []
 
-    def fake_get(url, timeout):
+    def fake_get(url, timeout, opener=None):
         calls.append(url)
-        return {"n": len(calls)}
+        return {"links": [], "n": len(calls)}                  # a (tiny) STAC catalogue
+
+    def n(doc):
+        return doc["n"]
 
     monkeypatch.setattr(stac, "_http_get_json", fake_get)
     f = stac.Fetcher(cache_dir=str(tmp_path))
-    assert f("https://x/a.json") == {"n": 1}
-    assert f("https://x/a.json") == {"n": 1}                  # from cache
+    assert n(f("https://x/a.json")) == 1
+    assert n(f("https://x/a.json")) == 1                       # from cache
     assert len(calls) == 1 and len(os.listdir(tmp_path)) == 1
-    assert stac.Fetcher(cache_dir=str(tmp_path), refresh=True)("https://x/a.json") == {"n": 2}
-    assert stac.Fetcher(cache_dir=str(tmp_path), max_age_days=-1)("https://x/a.json") == {"n": 3}
+    assert n(stac.Fetcher(cache_dir=str(tmp_path), refresh=True)("https://x/a.json")) == 2
+    assert n(stac.Fetcher(cache_dir=str(tmp_path), max_age_days=-1)("https://x/a.json")) == 3
     for name in os.listdir(tmp_path):                          # corrupt the cache
         (tmp_path / name).write_text("{not json")
-    assert f("https://x/a.json") == {"n": 4}
+    assert n(f("https://x/a.json")) == 4
     nocache = stac.Fetcher(cache_dir=None)
-    assert nocache("https://x/b.json") == {"n": 5}
-    assert nocache("https://x/b.json") == {"n": 6}
+    assert n(nocache("https://x/b.json")) == 5
+    assert n(nocache("https://x/b.json")) == 6
 
 
 def test_fetcher_reads_file_urls_without_caching(tmp_path):
@@ -144,13 +147,19 @@ def test_default_cache_dir_env(monkeypatch, tmp_path):
     assert stac.default_cache_dir() == str(tmp_path)
 
 
+class _Opener:
+    """Stands in for a urllib opener (stac uses opener.open, not urlopen)."""
+
+    def __init__(self, fn):
+        self.open = fn
+
+
 def test_http_errors(monkeypatch):
     def not_found(req, timeout):
         raise urllib.error.HTTPError(req.full_url, 404, "Not Found", {}, io.BytesIO(b""))
 
-    monkeypatch.setattr(stac.urllib.request, "urlopen", not_found)
     with pytest.raises(Gem15Error, match="HTTP 404"):
-        stac._http_get_json("https://x/missing.json", 5)
+        stac._http_get_json("https://x/missing.json", 5, _Opener(not_found))
 
     tries = []
 
@@ -158,10 +167,9 @@ def test_http_errors(monkeypatch):
         tries.append(1)
         raise urllib.error.URLError("no network")
 
-    monkeypatch.setattr(stac.urllib.request, "urlopen", offline)
     monkeypatch.setattr(stac.time, "sleep", lambda s: None)
     with pytest.raises(Gem15Error, match="internet connection"):
-        stac._http_get_json("https://x/a.json", 5)
+        stac._http_get_json("https://x/a.json", 5, _Opener(offline))
     assert len(tries) == stac.HTTP_RETRIES
 
 
@@ -179,7 +187,6 @@ def test_user_agent_is_generic(monkeypatch):
         seen.update(req.headers)
         return Resp(b"{}")
 
-    monkeypatch.setattr(stac.urllib.request, "urlopen", capture)
-    stac._http_get_json("https://x/a.json", 5)
+    stac._http_get_json("https://x/a.json", 5, _Opener(capture))
     assert seen["User-agent"].startswith("gem15-tools/")
     assert "@" not in seen["User-agent"]

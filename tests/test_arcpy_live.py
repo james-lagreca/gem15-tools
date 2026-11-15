@@ -136,7 +136,7 @@ def test_vrt_across_zones(tb, tmp_path):
 def test_clip_matches_streamed_pixels(tb, pyt, tmp_path):
     out = str(tmp_path / "vic.tif")
     res = tb.ClipForAnalysis(lonlat_extent(VIC), "dtm", None, out)
-    assert "Download: about" in res.getMessages(1)
+    assert "Download: about" in res.getMessages(0)
     ds = gdal.Open(out)
     gt, nx, ny = ds.GetGeoTransform(), ds.RasterXSize, ds.RasterYSize
     bounds = (gt[0], gt[3] + gt[5] * ny, gt[0] + gt[1] * nx, gt[3])

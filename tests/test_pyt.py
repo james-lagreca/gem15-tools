@@ -32,6 +32,27 @@ def test_uses_vendored_core(monkeypatch):
     assert os.path.dirname(t.stac.__file__) == str(PYT.parent / "gem15core")
 
 
+def _exec_pyt():
+    """Run the .pyt again as Pro does on a refresh, without clearing modules."""
+    loader = importlib.machinery.SourceFileLoader("gem15pyt_again", str(PYT))
+    mod = importlib.util.module_from_spec(importlib.util.spec_from_loader("gem15pyt_again", loader))
+    loader.exec_module(mod)
+    return mod
+
+
+def test_core_reimported_only_when_changed(monkeypatch):
+    """An unchanged core is kept (re-importing it would give Gem15Error a new
+    identity and break `except` clauses); a changed one is re-imported."""
+    t1 = load_pyt(monkeypatch)
+    core = sys.modules["gem15core"]
+    assert core._toolbox_fingerprint
+    t2 = _exec_pyt()
+    assert sys.modules["gem15core"] is core and t2.Gem15Error is t1.Gem15Error
+    core._toolbox_fingerprint = "an older version"            # as after an update
+    t3 = _exec_pyt()
+    assert sys.modules["gem15core"] is not core and t3.Gem15Error is not t1.Gem15Error
+
+
 def test_find_cells_and_paths(monkeypatch):
     t = load_pyt(monkeypatch)
     tiles = t.find_cells((172.6, -41.95, 173.2, -41.65), "dtm", fetch=FakeFetch(make_docs()))

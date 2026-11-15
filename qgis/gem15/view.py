@@ -12,6 +12,8 @@ Assumptions (flagged):
      world view in a polar CRS) are skipped; at least 3 must succeed.
  E2. Latitudes are clamped to +/-90 degrees; GEM-15 only covers 61 S to 84 N,
      so nothing is lost.
+ E3. A view that contains a pole (e.g. a polar stereographic map) is widened
+     to reach it and to cover every longitude (gem15core.extent.include_poles).
 """
 
 import math
@@ -19,7 +21,7 @@ import math
 from qgis.core import (QgsCoordinateReferenceSystem, QgsCoordinateTransform,
                        QgsCsException, QgsPointXY, QgsProject)
 
-from .gem15core import Gem15Error, extent
+from .gem15core import Gem15Error, cells, extent
 
 WGS84 = "EPSG:4326"
 
@@ -46,14 +48,28 @@ def lonlat_bbox(rect, crs, transform_context=None, points_per_side=21):
     bbox = extent.from_lonlat_points(pts)
     if bbox[1] >= bbox[3] or bbox[0] == bbox[2]:
         raise Gem15Error(f"The extent is too small or degenerate: {bbox}")
+    bbox = extent.include_poles(bbox, *poles_inside(rect, crs, context))   # E3
     return extent.check(bbox)
+
+
+def poles_inside(rect, crs, transform_context=None):
+    """(north, south): whether each pole lies inside the extent (E3). A polar
+    view's outline never reaches the pole, so its box would stop short."""
+    if crs.isGeographic():
+        return (False, False)
+    context = transform_context or QgsProject.instance().transformContext()
+    ct = QgsCoordinateTransform(QgsCoordinateReferenceSystem(WGS84), crs, context)
+    found = []
+    for lat in (90.0, -90.0):
+        try:
+            p = ct.transform(QgsPointXY(0.0, lat))
+            found.append(math.isfinite(p.x()) and math.isfinite(p.y())
+                         and rect.contains(QgsPointXY(p.x(), p.y())))
+        except QgsCsException:
+            found.append(False)                        # cannot be projected (e.g. Mercator)
+    return tuple(found)
 
 
 def cell_count(bbox):
     """Number of 1 x 1 degree cells a box overlaps (for the P1 limit in settings)."""
-    total = 0
-    for w, s, e, n in extent.split_antimeridian(bbox):
-        cols = math.ceil(e - 1e-9) - math.floor(w)
-        rows = math.ceil(n - 1e-9) - math.floor(s)
-        total += max(0, cols) * max(0, rows)
-    return total
+    return cells.count_for_bbox(bbox)

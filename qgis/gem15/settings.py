@@ -6,8 +6,10 @@ Choices (flagged; change here if they do not suit):
  P1. "For current view" refuses views covering more than MAX_VIEW_CELLS
      1 x 1 degree cells (6 x 6 degrees), before making any request. Each
      visible tile is opened over the network, and a lookup of a huge view
-     fetches hundreds of catalogue documents. Processing > Build GEM-15 VRT
-     has no such limit.
+     fetches hundreds of catalogue documents. The Processing algorithms
+     refuse more than MAX_PROCESSING_CELLS (about Australia's bounding box,
+     as in the ArcGIS toolbox), also before any request, and can be
+     cancelled while the catalogue is read.
  P2. VRTs go to, in order: the folder set in the plugin's settings
      (gem15/output_folder); "<project folder>/<project name>_gem15" when the
      project has been saved; else a per-user folder in the QGIS profile,
@@ -28,6 +30,7 @@ from qgis.core import QgsApplication, QgsProject, QgsSettings
 
 KEY = "gem15/"
 MAX_VIEW_CELLS = 36
+MAX_PROCESSING_CELLS = 1500
 LRM_MAX_SCALE = 40000.0
 LRM_DISPLAY_RANGE_M = 2.5
 

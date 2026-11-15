@@ -18,9 +18,17 @@ Assumptions (flagged):
      projection extension v1.1); item-level values are used if an asset lacks
      them. proj:transform is in affine order (a, b, c, d, e, f):
      x = a*col + b*row + c, y = d*col + e*row + f.
+ S4. Only documents that look like STAC (a catalogue or collection with
+     links, or an item with a bbox and assets) are cached. A Wi-Fi login page,
+     proxy block page or other stray JSON raises an error instead, so it can
+     never be cached and then report "no coverage" for CACHE_MAX_AGE_DAYS.
+ S5. Network failures of every kind (timeouts, which Python 3.9 raises as
+     socket.timeout; resets; refused connections) are retried HTTP_RETRIES
+     times, each waiting at most HTTP_TIMEOUT_S, then reported in plain words.
 """
 
 import hashlib
+import http.client
 import json
 import os
 import sys
@@ -29,7 +37,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from typing import Dict, Optional, Tuple
 
@@ -38,6 +46,11 @@ from . import (DSM_BANDS, DTM_BANDS, PRODUCTS, STAC_COLLECTION_URL, USER_AGENT,
 
 CACHE_MAX_AGE_DAYS = 30
 HTTP_RETRIES = 3
+HTTP_TIMEOUT_S = 20                # per attempt (S5); the documents are a few kB
+NETWORK_HINT = ("Check the internet connection. On hotel, campus or corporate "
+                "networks a Wi-Fi login page, proxy or firewall may be blocking "
+                "storage.googleapis.com: open " + STAC_COLLECTION_URL +
+                " in a web browser to test.")
 
 
 # --------------------------------------------------------------------------
@@ -147,37 +160,80 @@ def default_cache_dir():
     return os.path.join(base, "gem15tools", "stac")
 
 
-def _http_get_json(url, timeout):
-    """GET a JSON document, retrying transient failures (not 4xx)."""
+def _opener(proxy):
+    """urllib opener: the system's proxies by default, or `proxy` ("host:port")."""
+    if not proxy:
+        return urllib.request.build_opener()
+    url = proxy if "://" in proxy else "http://" + proxy
+    return urllib.request.build_opener(urllib.request.ProxyHandler({"http": url, "https": url}))
+
+
+def _http_get_json(url, timeout, opener=None):
+    """GET a JSON document, retrying transient failures (not 4xx) (S5)."""
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    opener = opener or urllib.request.build_opener()
     last = None
     for attempt in range(HTTP_RETRIES):
         try:
-            with urllib.request.urlopen(req, timeout=timeout) as resp:
-                return json.load(resp)
-        except urllib.error.HTTPError as e:
+            with opener.open(req, timeout=timeout) as resp:
+                raw = resp.read()
+        except urllib.error.HTTPError as e:                  # before OSError: a subclass
             if 400 <= e.code < 500:
-                raise Gem15Error(f"HTTP {e.code} for {url}") from e
+                raise Gem15Error(f"HTTP {e.code} for {url}. {NETWORK_HINT}") from e
             last = e
-        except (urllib.error.URLError, TimeoutError, ConnectionError) as e:
+        except (OSError, http.client.HTTPException) as e:    # URLError, timeouts, resets
             last = e
-        time.sleep(0.5 * 2 ** attempt)
-    raise Gem15Error(f"Could not fetch {url} ({last}). Check the internet "
-                     "connection, or a proxy/firewall blocking storage.googleapis.com.")
+        else:
+            try:
+                return json.loads(raw.decode("utf-8"))
+            except ValueError as e:
+                start = raw[:60].decode("utf-8", "replace").strip()
+                raise Gem15Error(f"{url} did not return the GEM-15 catalogue (it began "
+                                 f"{start!r}). {NETWORK_HINT}") from e
+        if attempt + 1 < HTTP_RETRIES:
+            time.sleep(0.5 * 2 ** attempt)
+    raise Gem15Error(f"Could not fetch {url} ({last}). {NETWORK_HINT}")
+
+
+def looks_like_stac(doc):
+    """True for a STAC catalogue/collection (has links) or item (bbox + assets) (S4)."""
+    return isinstance(doc, dict) and (
+        isinstance(doc.get("links"), list) or ("bbox" in doc and "assets" in doc))
+
+
+def clear_cache(cache_dir=None):
+    """Delete the cached catalogue documents; returns how many were removed."""
+    folder = cache_dir or default_cache_dir()
+    n = 0
+    try:
+        names = os.listdir(folder)
+    except OSError:
+        return 0
+    for name in names:
+        if name.endswith((".json", ".tmp")):
+            try:
+                os.remove(os.path.join(folder, name))
+                n += 1
+            except OSError:
+                pass
+    return n
 
 
 class Fetcher:
     """Callable url -> parsed JSON, caching http(s) documents on disk.
 
     cache_dir=None disables the cache. file:// URLs (used by tests) are never cached.
+    proxy : "host:port" of an HTTP proxy (e.g. QGIS's own setting); default:
+            the system's proxy settings, as urllib finds them.
     """
 
     def __init__(self, cache_dir="default", max_age_days=CACHE_MAX_AGE_DAYS,
-                 refresh=False, timeout=60):
+                 refresh=False, timeout=HTTP_TIMEOUT_S, proxy=None):
         self.cache_dir = default_cache_dir() if cache_dir == "default" else cache_dir
         self.max_age_s = max_age_days * 86400
         self.refresh = refresh
         self.timeout = timeout
+        self.opener = _opener(proxy)
 
     def _path(self, url):
         return os.path.join(self.cache_dir, hashlib.sha1(url.encode("utf-8")).hexdigest() + ".json")
@@ -188,7 +244,8 @@ class Fetcher:
             if time.time() - os.path.getmtime(p) > self.max_age_s:
                 return None
             with open(p, encoding="utf-8") as fh:
-                return json.load(fh)
+                doc = json.load(fh)
+            return doc if looks_like_stac(doc) else None    # S4: never trust a stray file
         except (OSError, ValueError):
             return None                      # missing, unreadable or corrupt: refetch
 
@@ -211,7 +268,10 @@ class Fetcher:
             doc = self._read_cache(url)
             if doc is not None:
                 return doc
-        doc = _http_get_json(url, self.timeout)
+        doc = _http_get_json(url, self.timeout, self.opener)
+        if not looks_like_stac(doc):                                     # S4
+            raise Gem15Error(f"{url} returned JSON that is not part of the GEM-15 "
+                             f"catalogue. {NETWORK_HINT}")
         if cacheable:
             self._write_cache(url, doc)
         return doc
@@ -231,23 +291,43 @@ def _name_from_url(url, depth):
 # --------------------------------------------------------------------------
 # Lookup
 # --------------------------------------------------------------------------
+def too_many_cells(bbox, max_cells):
+    """A Gem15Error message if bbox covers more than max_cells 1-degree cells, else None."""
+    n = cells.count_for_bbox(bbox)
+    if max_cells and n > max_cells:
+        return (f"This area covers {n} one-degree cells, more than the limit of "
+                f"{max_cells}. Zoom in, or draw a smaller extent.")
+    return None
+
+
 def find_tiles(bbox, product=None, collection_url=STAC_COLLECTION_URL, fetch=None,
-               workers=8):
+               workers=8, max_cells=None, progress=None, is_cancelled=None):
     """Tiles whose cell overlaps bbox (W, S, E, N in degrees; W > E crosses 180).
 
-    product : "dtm" or "dsm" to keep only tiles that have that asset; None for all.
-    fetch   : callable url -> JSON; defaults to a cached Fetcher().
+    product      : "dtm" or "dsm" to keep only tiles that have that asset; None for all.
+    fetch        : callable url -> JSON; defaults to a cached Fetcher().
+    max_cells    : refuse (before any request) an area of more 1-degree cells.
+    progress     : optional callable(done, total) as item documents arrive.
+    is_cancelled : optional callable -> True to stop (raises Gem15Error "Cancelled").
     Returns a list of Tile, sorted by cell id. Raises Gem15Error on bad input
     or network failure; an empty list means no coverage.
     """
     bbox = extent.check(bbox)
     if product is not None and product not in PRODUCTS:
         raise Gem15Error(f"product must be one of {PRODUCTS}, not {product!r}")
+    msg = too_many_cells(bbox, max_cells)
+    if msg:
+        raise Gem15Error(msg)
     fetch = fetch or Fetcher()
+    is_cancelled = is_cancelled or (lambda: False)
 
     collection = fetch(collection_url)
+    children = _links(collection, collection_url, "child")
+    if not children:
+        raise Gem15Error(f"The catalogue at {collection_url} lists no tile groups; it may "
+                         f"have moved. {NETWORK_HINT}")
     group_urls = []
-    for url in _links(collection, collection_url, "child"):
+    for url in children:
         gbox = cells.parse_group(_name_from_url(url, 1))
         if gbox is None or extent.intersects(gbox, bbox):         # S1
             group_urls.append(url)
@@ -259,7 +339,16 @@ def find_tiles(bbox, product=None, collection_url=STAC_COLLECTION_URL, fetch=Non
                 cbox = cells.parse_cell(_name_from_url(iurl, 1))
                 if cbox is None or extent.intersects(cbox, bbox):  # S1
                     item_urls.append(iurl)
-        items = list(pool.map(fetch, item_urls))
+        items = [None] * len(item_urls)
+        futures = {pool.submit(fetch, u): i for i, u in enumerate(item_urls)}
+        for done, fut in enumerate(as_completed(futures), 1):
+            if is_cancelled():
+                for f in futures:
+                    f.cancel()
+                raise Gem15Error("Cancelled.")
+            items[futures[fut]] = fut.result()
+            if progress:
+                progress(done, len(item_urls))
 
     tiles = []
     for item, iurl in zip(items, item_urls):

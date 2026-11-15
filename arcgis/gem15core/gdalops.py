@@ -34,15 +34,33 @@ Assumptions (flagged):
      over 7 x 4 degrees of SA/Victoria (3 zones), the two empty warpers took
      60 % of a warm full-resolution 1600 x 1000 px read (checked 2026-11-15,
      GDAL 3.9.2). The exact transformer (G3) keeps pixel values unchanged.
+ G6. This module never changes gdal.UseExceptions(): it is one flag for the
+     whole process (all of ArcGIS Pro or QGIS, every thread), and other code
+     relies on it being off. Every GDAL result is checked here instead, so
+     the functions behave the same with exceptions on or off.
+ G7. Remote reads give up sooner than GDAL's defaults (GDAL_HTTP_TIMEOUT 60 s,
+     5 retries), for the bucket only. ArcGIS Pro's own gdalrc sets 480 s and
+     100 retries process-wide, so a stalled connection looked like a hang.
+     The system's proxy (as Python finds it) is passed to GDAL for the bucket
+     too, unless GDAL already has one: curl does not read Windows' proxy.
 """
 
 import os
+import urllib.request
 
 from osgeo import gdal, osr
 
 from . import BUCKET_URL, PIXEL_M, USER_AGENT, Gem15Error, crs, extent, paths, stac, vrt
 
-gdal.UseExceptions()
+# G6: leave exceptions as they are (off unless something turned them on), but
+# say so explicitly, which only silences GDAL 3.9's FutureWarning about it.
+# (GDAL 3.6 keeps these settings as a stack and can refuse; that is harmless.)
+for _mod in (osr, gdal):
+    try:
+        if not _mod.GetUseExceptions():
+            _mod.DontUseExceptions()
+    except RuntimeError:
+        pass
 
 REMOTE_GDAL_CONFIG = {
     "GDAL_DISABLE_READDIR_ON_OPEN": "EMPTY_DIR",   # do not list the bucket "folder"
@@ -51,6 +69,10 @@ REMOTE_GDAL_CONFIG = {
     "GDAL_HTTP_MERGE_CONSECUTIVE_RANGES": "YES",
     "GDAL_HTTP_USERAGENT": USER_AGENT,             # generic; no user details
     "VSI_CACHE": "TRUE",
+    "GDAL_HTTP_TIMEOUT": "60",                     # G7
+    "GDAL_HTTP_CONNECTTIMEOUT": "20",
+    "GDAL_HTTP_MAX_RETRY": "5",
+    "GDAL_HTTP_RETRY_DELAY": "1",
 }
 
 
@@ -58,50 +80,138 @@ REMOTE_GDAL_CONFIG = {
 # being worked out per processing chunk (which made values chunk-dependent).
 WARP_OPTIONS = ("XSCALE=1", "YSCALE=1")
 
-# Options that would change how GDAL opens anything else if set process-wide (G4).
-_BUCKET_ONLY = ("GDAL_DISABLE_READDIR_ON_OPEN", "CPL_VSIL_CURL_ALLOWED_EXTENSIONS")
+# Options that would change how GDAL opens anything else if set process-wide (G4, G7).
+_BUCKET_ONLY = ("GDAL_DISABLE_READDIR_ON_OPEN", "CPL_VSIL_CURL_ALLOWED_EXTENSIONS",
+                "GDAL_HTTP_TIMEOUT", "GDAL_HTTP_CONNECTTIMEOUT", "GDAL_HTTP_MAX_RETRY",
+                "GDAL_HTTP_RETRY_DELAY")
 
 
-def configure_remote(scoped=True, prefix=None):
-    """Apply REMOTE_GDAL_CONFIG (G1).
+def system_proxy():
+    """'host:port' of the system's https (else http) proxy as Python sees it
+    (registry on Windows, environment elsewhere), or None."""
+    try:
+        proxies = urllib.request.getproxies()
+    except Exception:                              # odd registry contents
+        return None
+    url = proxies.get("https") or proxies.get("http")
+    if not url:
+        return None
+    return url.split("://", 1)[-1].rstrip("/") or None   # curl: plain = HTTP proxy
+
+
+def configure_remote(scoped=True, prefix=None, proxy=None):
+    """Apply REMOTE_GDAL_CONFIG (G1, G7).
 
     scoped : True (default) limits the options to paths starting with
              `prefix` where GDAL allows it (G4); with an older GDAL only the
              options that are harmless process-wide are set. False sets all
              of them process-wide (fine for a stand-alone script).
     prefix : default "/vsicurl/" + the bucket URL (tests pass a local server).
+    proxy  : "host:port" (e.g. from QGIS's settings); default: the system's
+             proxy, if GDAL has none of its own (G7).
     Returns "scoped" or "global", saying how the options were applied.
     """
     prefix = prefix or "/vsicurl/" + BUCKET_URL
+    options = dict(REMOTE_GDAL_CONFIG)
+    if not gdal.GetConfigOption("GDAL_HTTP_PROXY"):
+        proxy = proxy or system_proxy()
+        if proxy:
+            options["GDAL_HTTP_PROXY"] = proxy
     set_for_path = (getattr(gdal, "SetPathSpecificOption", None)      # GDAL >= 3.6
                     or getattr(gdal, "SetCredential", None))           # GDAL 3.5 name
     if scoped and set_for_path:
-        for k, v in REMOTE_GDAL_CONFIG.items():
+        for k, v in options.items():
             set_for_path(prefix, k, v)
         return "scoped"
-    for k, v in REMOTE_GDAL_CONFIG.items():
+    for k, v in options.items():
         if scoped and k in _BUCKET_ONLY:
             continue                     # costs extra requests, but leaves other data alone
         gdal.SetConfigOption(k, v)
     return "global"
 
 
+def _failed(what, err=None):
+    """Gem15Error naming `what`, with GDAL's last message (G6)."""
+    msg = gdal.GetLastErrorMsg() or (str(err) if err else "") or "no message from GDAL"
+    return Gem15Error(f"{what} failed: {msg}")
+
+
+def _run(what, fn, *args, **kwargs):
+    """Call a GDAL function; raise Gem15Error if it raised or returned None (G6).
+    GDAL's own printing of errors is muted meanwhile (the handler stack is
+    per thread, so QGIS's logging elsewhere is untouched); the message is
+    still read with GetLastErrorMsg and reported in the Gem15Error."""
+    gdal.ErrorReset()
+    gdal.PushErrorHandler("CPLQuietErrorHandler")
+    try:
+        result = fn(*args, **kwargs)
+        if result is None:                         # exceptions off
+            raise _failed(what)
+    except RuntimeError as e:                      # exceptions on
+        raise _failed(what, e) from e
+    finally:
+        gdal.PopErrorHandler()
+    return result
+
+
 def srs(user_input):
     """osr.SpatialReference from 'EPSG:xxxx', a PROJ string or WKT, x = easting/longitude."""
     s = osr.SpatialReference()
-    s.SetFromUserInput(user_input)
+    try:
+        err = s.SetFromUserInput(user_input)
+    except RuntimeError as e:                      # exceptions on (G6)
+        raise Gem15Error(f"Unknown coordinate system: {str(user_input)[:80]!r} ({e})") from e
+    if err:                                        # exceptions off: an OGR error code
+        raise Gem15Error(f"Unknown coordinate system: {str(user_input)[:80]!r}")
     s.SetAxisMappingStrategy(osr.OAMS_TRADITIONAL_GIS_ORDER)
     return s
+
+
+def check_metric_crs(crs_input):
+    """Raise Gem15Error unless the CRS is projected in metres. Pixels are 15 m:
+    in degrees a 15-unit pixel covers the globe (a 1 x 1 px raster), and in
+    feet x/y and height would disagree for hillshade and slope."""
+    s = srs(crs_input)
+    name = s.GetName() or str(crs_input)[:60]
+    if s.IsGeographic() or not s.IsProjected():
+        raise Gem15Error(f"'{name}' uses degrees. Choose a projected coordinate system in "
+                         "metres, or leave it blank for the automatic choice.")
+    if abs(s.GetLinearUnits() - 1.0) > 1e-9:
+        raise Gem15Error(f"'{name}' is in {s.GetLinearUnitsName() or 'non-metre units'}; "
+                         "GEM-15 heights are in metres. Choose a projected coordinate "
+                         "system in metres, or leave it blank for the automatic choice.")
+
+
+def _transform(src, dst):
+    ct = osr.CreateCoordinateTransformation(srs(src), srs(dst))
+    if ct is None:
+        raise Gem15Error(f"Cannot transform between {src!r} and {dst!r}.")
+    return ct
+
+
+def _project_ring(ct, ring):
+    """Project points, skipping any PROJ cannot handle; at least 3 must succeed."""
+    xy = []
+    for x, y in ring:
+        try:
+            p = ct.TransformPoint(x, y)[:2]
+        except RuntimeError:                       # exceptions on (G6)
+            continue
+        if all(v == v and abs(v) != float("inf") for v in p):
+            xy.append(p)
+    if len(xy) < 3:
+        raise Gem15Error("Could not project this area into the chosen coordinate system.")
+    return xy
 
 
 def aoi_bounds_in(crs_input, bbox, densify=21, snap=PIXEL_M):
     """Project a lon/lat bbox into a CRS; return (xmin, ymin, xmax, ymax)
     grown outwards to multiples of `snap` metres. Handles the antimeridian."""
-    ct = osr.CoordinateTransformation(srs("EPSG:4326"), srs(crs_input))
+    ct = _transform("EPSG:4326", crs_input)
     w, s, e, n = bbox
     if w > e:
         e += 360                       # PROJ wraps longitude about the central meridian
-    xy = [ct.TransformPoint(x, y)[:2] for x, y in extent.densified_ring(w, s, e, n, densify)]
+    xy = _project_ring(ct, extent.densified_ring(w, s, e, n, densify))
     xs, ys = [p[0] for p in xy], [p[1] for p in xy]
     return vrt.snap_bounds((min(xs), min(ys), max(xs), max(ys)), snap)
 
@@ -109,9 +219,9 @@ def aoi_bounds_in(crs_input, bbox, densify=21, snap=PIXEL_M):
 def bounds_between(bounds, src_crs, dst_crs, densify=21, snap=PIXEL_M):
     """Project (xmin, ymin, xmax, ymax) from one projected CRS to another along
     its densified outline; return the enclosing bounds snapped outwards."""
-    ct = osr.CoordinateTransformation(srs(src_crs), srs(dst_crs))
+    ct = _transform(src_crs, dst_crs)
     x0, y0, x1, y1 = bounds
-    xy = [ct.TransformPoint(x, y)[:2] for x, y in extent.densified_ring(x0, y0, x1, y1, densify)]
+    xy = _project_ring(ct, extent.densified_ring(x0, y0, x1, y1, densify))
     xs, ys = [p[0] for p in xy], [p[1] for p in xy]
     return vrt.snap_bounds((min(xs), min(ys), max(xs), max(ys)), snap)
 
@@ -188,6 +298,7 @@ def build_vrt(bbox, out_vrt, product="dtm", band_name=None, dst_crs=None,
         dst = choice.gdal_string()
     else:
         dst = dst_crs
+        check_metric_crs(dst)          # degrees or feet would give a 1 x 1 px raster
         if len(zones) == 1 and srs(dst).IsSame(srs(f"EPSG:{next(iter(zones))}")):
             native(next(iter(zones)), tiles, out_vrt)
             return out_vrt
@@ -205,7 +316,7 @@ def build_vrt(bbox, out_vrt, product="dtm", band_name=None, dst_crs=None,
             continue
         zone_vrt = native(z, zt, f"{stem}_epsg{z}.vrt", zb).path
         wv = f"{stem}_epsg{z}_to_{tag}.vrt"
-        gdal.Warp(wv, zone_vrt, options=gdal.WarpOptions(
+        _run(f"Warping EPSG:{z}", gdal.Warp, wv, zone_vrt, options=gdal.WarpOptions(
             format="VRT", dstSRS=dst, outputBounds=wb,
             xRes=PIXEL_M, yRes=PIXEL_M, targetAlignedPixels=True,
             resampleAlg=resample, srcNodata="nan", dstNodata="nan",
@@ -213,14 +324,13 @@ def build_vrt(bbox, out_vrt, product="dtm", band_name=None, dst_crs=None,
         warped.append(wv)
     if not warped:
         raise Gem15Error(f"No GEM-15 tiles reach {bbox}.")
-    gdal.BuildVRT(out_vrt, warped, options=gdal.BuildVRTOptions(
+    _run("Building the VRT", gdal.BuildVRT, out_vrt, warped, options=gdal.BuildVRTOptions(
         outputBounds=bounds, srcNodata="nan", VRTNodata="nan"))
-    ds = gdal.Open(out_vrt, gdal.GA_Update)
+    ds = _run(f"Opening {out_vrt}", gdal.Open, out_vrt, gdal.GA_Update)
     ds.GetRasterBand(1).SetDescription(f"GEM-15 {band_name or product} (m, EGM96)")
+    cols, rows = ds.RasterXSize, ds.RasterYSize
     ds = None
-    info = gdal.Open(out_vrt)
-    log(f"Wrote {out_vrt} ({info.RasterXSize} x {info.RasterYSize} px, warped, "
-        f"{resample})")
+    log(f"Wrote {out_vrt} ({cols} x {rows} px, warped, {resample})")
     return out_vrt
 
 
@@ -228,14 +338,36 @@ def clip_to_geotiff(src, out_tif, log=print, callback=None):
     """Copy a (VRT) raster to a compressed local GeoTIFF; downloads only its area.
 
     callback : optional GDAL progress function (fraction, message, data) that
-               returns 0 to cancel (GDAL then raises RuntimeError).
+               returns 0 to cancel; then the partial file is removed and
+               Gem15Error("Cancelled.") raised.
     """
     log = log or (lambda *_: None)
-    ds = gdal.Open(src)
+    ds = _run(f"Opening {src}", gdal.Open, src)
     mb = ds.RasterXSize * ds.RasterYSize * 4 / 1e6
     log(f"Clipping {ds.RasterXSize} x {ds.RasterYSize} px "
         f"(~{mb:.0f} MB as uncompressed float32) -> {out_tif}")
-    gdal.Translate(out_tif, ds, options=gdal.TranslateOptions(
-        format="GTiff", callback=callback, creationOptions=[
-            "COMPRESS=DEFLATE", "PREDICTOR=3", "TILED=YES", "BIGTIFF=IF_SAFER"]))
+    cancelled = []
+
+    def progress(frac, msg, data):
+        ok = callback(frac, msg, data) if callback else 1
+        if not ok:
+            cancelled.append(True)
+        return ok
+
+    try:
+        written = _run("Writing the GeoTIFF", gdal.Translate, out_tif, ds,
+                       options=gdal.TranslateOptions(format="GTiff", callback=progress,
+                                                     creationOptions=[
+                           "COMPRESS=DEFLATE", "PREDICTOR=3", "TILED=YES", "BIGTIFF=IF_SAFER"]))
+        written.FlushCache()
+        del written                                # close, so the file is complete
+    except Gem15Error:
+        ds = None
+        try:
+            gdal.GetDriverByName("GTiff").Delete(out_tif)   # no half-written file
+        except Exception:
+            pass
+        if cancelled:
+            raise Gem15Error("Cancelled.")
+        raise
     return out_tif
