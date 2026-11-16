@@ -182,6 +182,20 @@ def test_current_view_tool_with_canopy_and_edges(tb, pyt, tmp_path):
     assert "machine learning" in res.getMessages(0)             # the caveat is shown
 
 
+def test_cloud_mosaic_dem_draws(tb, pyt, acs, gdb, tmp_path):
+    """The DEM layer of a cloud mosaic draws (it drew nothing in Pro once
+    styled with setDefinition, 2026-11-16)."""
+    md = tb.AddGEM15ForExtent(lonlat_extent(VIC), "dtm", "Mosaic dataset", acs,
+                              gdb).getOutput(0)
+    aprx, m = offline.blank_map(tmp_path)
+    m.addDataFromPath(md)                                   # as Pro adds a tool's output
+    pyt.add_dem_layer(m, md, "GEM-15 DTM")
+    sr = arcpy.Describe(md).spatialReference
+    x0, y0, x1, y1 = gdalops.aoi_bounds_in(f"EPSG:{sr.factoryCode}", VIC)
+    view = arcpy.Extent(x0, y0, x1, y1, spatial_reference=sr)
+    assert offline.drawn_contrast(aprx, m, view, tmp_path) > 20
+
+
 def test_terrain_stack_on_cloud_mosaic_is_quick(tb, pyt, acs, gdb, tmp_path):
     """MakeRasterLayer on a cloud mosaic took ~180 s per layer; built on a
     stand-in (A15) the whole stack is far quicker, with the same pixels."""

@@ -178,6 +178,7 @@ WARN_CELLS = 60                 # warn above this many 1-degree cells
 MAX_CELLS = 1500                # refuse before any request (Australia's box is ~1400)
 MAX_VIEW_CELLS = 36             # "for current view": 6 x 6 degrees, as the QGIS plugin
 PAD_DEG = 0.005                 # pad the extent slightly (~500 m) after projecting
+_DEM_LAYER_FILES = {}           # mosaic path -> styled .lyrx, from execute to postExecute
 COLLECTION_ENV = "GEM15_COLLECTION_URL"  # catalogue override (tests or a mirror)
 PROBE_TILE = BUCKET_URL + DATA_FOLDER + "/m40_p140/w144sm38/dtm/zall/mosaic.tif"  # A7
 LIVE_LRM_MIN_SCALE = terrain.LRM_MAX_SCALE   # A9: live LRM drawn at 1:50,000 and closer
@@ -581,38 +582,82 @@ def set_credits(layer, title):
         pass                           # the credit is a courtesy, not essential
 
 
-def add_dem_layer(m, path, name):
-    """Add an elevation layer (mosaic dataset, VRT or tile) with DRA, unless the
-    map already shows that data. Returns (layer, added)."""
-    lyr = find_layer(m, source=path)
-    if lyr is not None:
-        return lyr, False
-    lyr = m.addDataFromPath(path)
-    lyr.name = name
-    set_dra(lyr)
-    set_credits(lyr, name)
-    return lyr, True
-
-
-def set_dra(layer):
-    """Turn on DRA (stretch statistics from the pixels in view) for a raster
-    layer, or for the sublayers of a mosaic layer. Returns True if set."""
-    done = False
+def is_mosaic(src):
+    """True if src is a mosaic dataset."""
     try:
-        subs = list(layer.listLayers() or [])   # a mosaic layer's image sublayer etc.
+        return arcpy.Describe(src).dataType == "MosaicDataset"
     except Exception:
-        subs = []
-    for lyr in [layer] + subs:
+        return False
+
+
+def top_layers(m, source):
+    """The layers in map m showing this data source, outside group layers."""
+    out = []
+    for lyr in m.listLayers():
         try:
-            cim = lyr.getDefinition("V3")
-            col = getattr(cim, "colorizer", None)
-            if col is not None and hasattr(col, "statsType"):
-                col.statsType = "AreaOfView"
-                lyr.setDefinition(cim)
-                done = True
+            if (lyr.longName == lyr.name and lyr.supports("DATASOURCE")
+                    and _norm(lyr.dataSource) == _norm(source)):
+                out.append(lyr)
         except Exception:
-            pass                      # not a raster layer, or no CIM access
-    return done
+            continue
+    return out
+
+
+def dem_layer_file(src, name, path=None, visible=True):
+    """Write a .lyrx for an elevation source (mosaic dataset, VRT or GeoTIFF)
+    with DRA (stretch statistics from the pixels in view, since none are
+    computed from the cloud) and the GEM-15 credit in its description.
+    Returns its path (default: a new file in the scratch folder).
+
+    Styled in the file, never with setDefinition: setDefinition on a mosaic
+    layer's Image sublayer, even with the definition unchanged, stops the
+    mosaic drawing at all (Pro 3.4, found 2026-11-16). Raster layers are not
+    affected, but take the same route."""
+    path = path or os.path.join(arcpy.env.scratchFolder,
+                                f"gem15_dem_{uuid.uuid4().hex[:12]}.lyrx")
+    tmp = "gem15_" + uuid.uuid4().hex[:12]
+    make = (arcpy.management.MakeMosaicLayer if is_mosaic(src)
+            else arcpy.management.MakeRasterLayer)
+    with arcpy.EnvManager(addOutputsToMap=False):
+        lyr = make(src, tmp).getOutput(0)
+        if os.path.exists(path):
+            os.remove(path)
+        arcpy.management.SaveToLayerFile(lyr, path, "ABSOLUTE")
+        arcpy.management.Delete(tmp)
+    with open(path, encoding="utf-8") as fh:
+        doc = json.load(fh)
+    top = set(doc.get("layers") or [])
+    for d in doc.get("layerDefinitions", []):
+        col = d.get("colorizer")
+        if isinstance(col, dict) and "statsType" in col:     # the Image sublayer, or
+            col["statsType"] = "AreaOfView"                  # a raster layer: DRA
+        if d.get("uRI") in top:
+            d["name"] = name
+            d["description"] = f"{name}. {credit_text()}"
+            d["visibility"] = bool(visible)
+    with open(path, "w", encoding="utf-8") as fh:
+        json.dump(doc, fh, indent=2)
+    return path
+
+
+def add_dem_layer(m, path, name, lyrx=None):
+    """Add an elevation layer (mosaic dataset, VRT or tile) with DRA, from a
+    layer file (dem_layer_file; `lyrx` if already written). A layer of the same
+    data already in the map (outside groups) is kept for a VRT or tile, but
+    replaced, in its place, for a mosaic dataset: Pro's own (no DRA) or one
+    styled by v0.1 before this fix, which does not draw. Returns (layer, added)."""
+    old = top_layers(m, path)
+    if old and not is_mosaic(path):
+        return old[0], False
+    lf = arcpy.mp.LayerFile(lyrx or dem_layer_file(path, name))
+    if old:
+        m.insertLayer(old[0], lf, "BEFORE")
+        for lyr in old:
+            m.removeLayer(lyr)
+    else:
+        m.addLayer(lf, "TOP")
+    new = top_layers(m, path)
+    return (new[0] if new else None), True
 
 
 def add_rasters_to_map(m, raster_paths, names):
@@ -624,27 +669,23 @@ def add_layer_files(m, lyrx_paths, group_name, dem_source=None, dem_name=None):
     """Add layer files to a group layer, the first at the bottom; returns the
     group. A group of the same name is replaced: its live layers store the
     source's extent as it was (A15), so a mosaic that has grown needs new ones.
-    With dem_source, that elevation layer goes into the group too, at the
-    bottom and switched off: the opaque hillshade hides it, so drawing it
-    would only cost downloads."""
+    With dem_source, that elevation layer goes into the group too (moved in, if
+    the map already shows it), at the bottom and switched off: the opaque
+    hillshade hides it, so drawing it would only cost downloads."""
     for old in [lyr for lyr in m.listLayers()
                 if lyr.name == group_name and getattr(lyr, "isGroupLayer", False)]:
         m.removeLayer(old)
     group = m.createGroupLayer(group_name)
     if dem_source:
-        dem_layer, _ = add_dem_layer(m, dem_source, dem_name or os.path.basename(dem_source))
+        name = dem_name or os.path.basename(dem_source)
         try:
-            m.addLayerToGroup(group, dem_layer, "BOTTOM")      # adds a copy
+            lyrx = dem_layer_file(dem_source, name, visible=False)
+            m.addLayerToGroup(group, arcpy.mp.LayerFile(lyrx), "BOTTOM")
         except Exception:
-            pass                       # leave the DEM where it is
+            add_dem_layer(m, dem_source, name)                  # outside the group, then
         else:
-            for lyr in group.listLayers():
-                if lyr.name == dem_layer.name:
-                    lyr.visible = False
-            try:
-                m.removeLayer(dem_layer)                        # the original
-            except Exception:
-                pass
+            for lyr in top_layers(m, dem_source):               # moved into the group
+                m.removeLayer(lyr)
     for path in lyrx_paths:
         m.addLayerToGroup(group, arcpy.mp.LayerFile(path), "TOP")
     return group
@@ -939,15 +980,31 @@ DISPLAY_RANGES = {
 }
 
 
-def _fixed_stretch(col, lo, hi):
+# Legend labels (low, high) for the fixed ranges. Without them the legend shows
+# the empty stand-in's statistics (A15): +/-3.40282e+38.
+LEGEND_LABELS = {
+    "hillshade": ("0 (shadow)", "255 (lit)"),
+    "slope": ("0°", f"{terrain.SLOPE_DISPLAY_MAX_DEG:g}° or steeper"),
+    "lrm": (f"-{terrain.LRM_DISPLAY_RANGE_M:g} m (below local mean)",
+            f"+{terrain.LRM_DISPLAY_RANGE_M:g} m (above)"),
+    "canopy": ("", f"DSM - DTM > {terrain.CANOPY_THRESHOLD_M:g} m"),
+}
+
+
+def _fixed_stretch(col, lo, hi, labels=None):
     """Linear stretch over [lo, hi] from custom statistics: the same in every
-    view, and Pro has no reason to compute statistics from the cloud (A13)."""
+    view, and Pro has no reason to compute statistics from the cloud (A13).
+    labels: (low, high) legend text (default: the numbers)."""
     col["stretchType"] = "MinimumMaximum"
     col["statsType"] = "GlobalStats"
     col["useCustomStretchMinMax"] = True
     col["customStretchMin"], col["customStretchMax"] = lo, hi
     col["stretchStats"] = {"type": "StatsHistogram", "min": lo, "max": hi,
                            "mean": (lo + hi) / 2.0, "stddev": (hi - lo) / 4.0, "bandIndex": 0}
+    low, high = labels or (f"{lo:g}", f"{hi:g}")
+    col["stretchClasses"] = [{"type": "CIMRasterStretchClass", "label": low, "value": lo},
+                             {"type": "CIMRasterStretchClass"},
+                             {"type": "CIMRasterStretchClass", "label": high, "value": hi}]
     col.pop("minPercent", None)
     col.pop("maxPercent", None)
 
@@ -965,7 +1022,7 @@ def style_layer_json(layer_def, key):
     canopy : solid green, 50 % transparent, where DSM - DTM > 3 m.
     """
     col = layer_def.setdefault("colorizer", {"type": "CIMRasterStretchColorizer"})
-    _fixed_stretch(col, *DISPLAY_RANGES[key])
+    _fixed_stretch(col, *DISPLAY_RANGES[key], LEGEND_LABELS.get(key))
     if key == "slope":
         col["colorRamp"] = _ramp(_rgb(255, 255, 255), _rgb(0, 0, 0))
         col.pop("colorScheme", None)
@@ -1022,12 +1079,7 @@ def save_layer_file(raster, name, path, key, swaps=()):
 
 def is_remote(src):
     """True for sources read over the network: our VRTs and mosaic datasets."""
-    if str(src).lower().endswith(".vrt"):
-        return True
-    try:
-        return arcpy.Describe(src).dataType == "MosaicDataset"
-    except Exception:
-        return False
+    return str(src).lower().endswith(".vrt") or is_mosaic(src)
 
 
 def make_stand_in(src, folder):
@@ -1736,10 +1788,16 @@ class AddGEM15ForExtent:
         if p["tile_edges"].value is not False:
             add_tile_edges(m, tiles, product)
         if mode == MOSAIC:
-            # Pro adds this derived output to the map itself; postExecute styles it.
-            p["out_md"].value = add_to_mosaic(
+            # Pro adds this derived output to the map itself; postExecute swaps
+            # in a styled layer, written here where geoprocessing is safe.
+            md = add_to_mosaic(
                 tiles, bbox, product, ensure_connection(p["acs"].valueAsText),
                 p["gdb"].valueAsText or default_gdb(), p["md_name"].valueAsText, p["sr"].value)
+            try:
+                _DEM_LAYER_FILES[_norm(md)] = dem_layer_file(md, os.path.basename(md))
+            except Exception:
+                pass                    # postExecute writes it, or leaves Pro's layer
+            p["out_md"].value = md
             _caveat()
             return
         if mode == LAYERS:
@@ -1760,28 +1818,24 @@ class AddGEM15ForExtent:
         p["out_paths"].values = rasters
 
     def postExecute(self, params):
-        """After Pro has added the mosaic dataset to the map: DRA on, and no
-        second copy when the tool is run again for the same mosaic."""
+        """After Pro has added the mosaic dataset to the map: replace its layer
+        (and any earlier copy, so a repeat run adds no second one) with one
+        that has DRA and the credit, written in execute (dem_layer_file)."""
         p = _by_name(params)
         md = p["out_md"].valueAsText
         m = active_map()
         if not md or m is None:
             return
-        same = []
-        for lyr in m.listLayers():
-            try:
-                if (lyr.supports("DATASOURCE") and _norm(lyr.dataSource) == _norm(md)
-                        and "\\" not in lyr.longName.replace(lyr.name, "", 1)):
-                    same.append(lyr)
-            except Exception:
-                continue
-        for extra in same[1:]:
-            try:
-                m.removeLayer(extra)
-            except Exception:
-                pass
-        if same:
-            set_dra(same[0])
+        same = top_layers(m, md)
+        if not same:
+            return
+        lyrx = _DEM_LAYER_FILES.pop(_norm(md), None)
+        try:
+            add_dem_layer(m, md, same[0].name,
+                          lyrx if lyrx and os.path.exists(lyrx) else None)
+        except Exception as e:                  # Pro's plain layer still draws
+            arcpy.AddWarning(f"Could not style the mosaic layer ({e}); set its stretch "
+                             "statistics to DRA in Symbology.")
 
 
 def acs_paths(acs, tiles, product):

@@ -257,16 +257,12 @@ def test_layer_files_and_map(pyt, dem_tif, tmp_path, synthetic):
         assert col.statsType == "GlobalStats" and col.useCustomStretchMinMax   # fixed (A13)
         assert (col.customStretchMin, col.customStretchMax) == pyt.DISPLAY_RANGES[key]
         assert col.stretchType == "MinimumMaximum"
+        labels = [c.label for c in col.stretchClasses if getattr(c, "label", "")]
+        assert labels and "e+38" not in " ".join(labels)             # not the stand-in's stats
     col = arcpy.mp.LayerFile(files[2]).listLayers()[0].getDefinition("V3").colorizer
     assert type(col.colorRamp).__name__ == "CIMMultipartColorRamp"
     # Into a map, in a project copied from Pro's blank template.
-    blank = os.path.join(arcpy.GetInstallInfo()["InstallDir"],
-                         r"Resources\ArcToolBox\Services\routingservices\data\Blank.aprx")
-    if not os.path.exists(blank):
-        pytest.skip("Pro's Blank.aprx template not found")
-    shutil.copyfile(blank, tmp_path / "t.aprx")
-    aprx = arcpy.mp.ArcGISProject(str(tmp_path / "t.aprx"))
-    m = aprx.createMap("GEM", "MAP")
+    aprx, m = blank_map(tmp_path)
     lyr = pyt.add_rasters_to_map(m, [dem_tif], ["GEM-15 DTM (test)"])[0]
     assert lyr.name == "GEM-15 DTM (test)"
     assert lyr.getDefinition("V3").colorizer.statsType == "AreaOfView"   # elevation: DRA
@@ -293,6 +289,65 @@ def test_layer_files_and_map(pyt, dem_tif, tmp_path, synthetic):
     pyt.update_tile_edges(tiles, "dtm", gdb)                    # again: no duplicates
     rows = list(arcpy.da.SearchCursor(fc, ["cell_id", "utm_zone"]))
     assert rows == [("w173sm42", "UTM 59S")]
+
+
+def blank_map(tmp_path, name="GEM"):
+    """A project copied from Pro's blank template, with one empty map (its
+    basemap removed: no network). Returns (project, map)."""
+    blank = os.path.join(arcpy.GetInstallInfo()["InstallDir"],
+                         r"Resources\ArcToolBox\Services\routingservices\data\Blank.aprx")
+    if not os.path.exists(blank):
+        pytest.skip("Pro's Blank.aprx template not found")
+    shutil.copyfile(blank, tmp_path / f"{name}.aprx")
+    aprx = arcpy.mp.ArcGISProject(str(tmp_path / f"{name}.aprx"))
+    m = aprx.createMap(name, "MAP")
+    for lyr in m.listLayers():
+        m.removeLayer(lyr)
+    return aprx, m
+
+
+def drawn_contrast(aprx, m, extent, tmp_path):
+    """Draw map m over extent (through a layout, as Pro would) and return the
+    grey-level standard deviation inside the frame: 0 when nothing is drawn."""
+    image = pytest.importorskip("PIL.Image")
+    m.spatialReference = extent.spatialReference
+    n = len(aprx.listLayouts())
+    lay = aprx.createLayout(4, 4, "INCH", f"check{n}")
+    mf = lay.createMapFrame(arcpy.Extent(0, 0, 4, 4), m, f"frame{n}")
+    mf.camera.setExtent(extent)
+    png = str(tmp_path / f"draw{n}.png")
+    lay.exportToPNG(png, resolution=50)
+    grey = np.asarray(image.open(png).convert("L"), dtype=float)
+    return float(grey[10:-10, 10:-10].std())
+
+
+def test_mosaic_dem_layer_draws(pyt, dem_tif, tmp_path):
+    """Mosaic layers styled with setDefinition drew nothing in Pro (2026-11-16):
+    any setDefinition on the Image sublayer stops it drawing. The DEM layer the
+    tools add (replacing Pro's own, or in the terrain group) must draw."""
+    if pyt._is_basic():
+        pytest.skip("mosaic datasets need a Standard or Advanced licence")
+    gdb = arcpy.management.CreateFileGDB(str(tmp_path), "m.gdb").getOutput(0)
+    md = arcpy.management.CreateMosaicDataset(gdb, "dem_md", arcpy.SpatialReference(32755), 1,
+                                              "32_BIT_FLOAT").getOutput(0)
+    arcpy.management.AddRastersToMosaicDataset(md, "Raster Dataset", dem_tif)
+    view = arcpy.Describe(dem_tif).extent
+    aprx, m = blank_map(tmp_path)
+    m.addDataFromPath(md)                                   # as Pro adds a tool's output
+    lyr, added = pyt.add_dem_layer(m, md, "GEM-15 DTM (mosaic)")
+    assert added and [x.name for x in pyt.top_layers(m, md)] == ["GEM-15 DTM (mosaic)"]
+    image = [s for s in lyr.listLayers() if s.name == "Image"][0]
+    assert image.getDefinition("V3").colorizer.statsType == "AreaOfView"   # DRA
+    assert "CC BY 4.0" in lyr.getDefinition("V3").description
+    assert drawn_contrast(aprx, m, view, tmp_path) > 20
+    # Moved into the terrain group, off; drawn once switched on.
+    group = pyt.add_layer_files(m, [], "GEM-15 terrain: md", md, "GEM-15 DTM (mosaic)")
+    dem = group.listLayers()[0]
+    assert dem.name == "GEM-15 DTM (mosaic)" and not dem.visible
+    assert not pyt.top_layers(m, md)
+    assert drawn_contrast(aprx, m, view, tmp_path) < 1             # off: nothing drawn
+    dem.visible = True
+    assert drawn_contrast(aprx, m, view, tmp_path) > 20
 
 
 def test_save_derivatives(pyt, dem_tif, tmp_path):

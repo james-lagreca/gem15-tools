@@ -20,7 +20,9 @@ other four in a "Step by step" toolset.
    hillshade, and the elevation switched off at the bottom; the tile edges
    dashed and labelled. How long does it take (headless: about 15 s)? Zoom to
    1:50,000: the LRM appears. Its colours should not change as you pan
-   (fixed ranges, A13).
+   (fixed ranges, A13). Turn the hillshade off and the elevation on: it
+   draws in grey (it was blank before 2026-11-16). The legends read
+   "0 (shadow) / 255 (lit)" and "-2.5 m / +2.5 m", not +/-3.40282e+38.
 3. **Live layers built on a stand-in (A15).** The terrain layers are made on
    an empty stand-in raster and pointed at the real source. Headless they read
    identical pixels; check they draw everywhere in the tiles, not just in one
@@ -38,8 +40,8 @@ other four in a "Step by step" toolset.
    and PNG in the project's gem15\profiles folder and the height in the
    messages.
 8. **Add GEM-15 for Extent, Mosaic dataset** with the extent blank (current
-   view): the mosaic layer arrives once, with DRA. Run it again: still one
-   layer. Look along tile overlaps for steps (A3; try Mosaic Method = Closest
+   view): the mosaic layer arrives once, draws, and has DRA (Symbology >
+   Statistics: Dynamic range adjustment). Run it again: still one layer. Look along tile overlaps for steps (A3; try Mosaic Method = Closest
    to Center).
 9. **Add GEM-15 for Extent, VRT file** across zones (central Australia,
    131.5-132.5 E, 25 S): the layer covers whole tiles, named "GEM-15 DTM
