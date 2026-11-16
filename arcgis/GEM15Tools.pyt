@@ -229,7 +229,9 @@ def lrm_radius_value(value):
     return float(v.split(" ")[0])
 
 # Terrain derivatives: key, label in the tools, in drawing order (bottom first).
-DERIVATIVES = (("hillshade", "Hillshade (multidirectional)"),
+# "Hillshade", not "Hillshade (multidirectional)": the lighting is a separate
+# choice (Illumination), and a single sun is one of them.
+DERIVATIVES = (("hillshade", "Hillshade"),
                ("slope", "Slope (degrees)"),
                ("lrm", "Local relief model"))
 DERIV_LABELS = [label for _, label in DERIVATIVES]

@@ -373,7 +373,7 @@ def lonlat_extent(bbox):
 def test_clip_tool_native_grid(tb, catalogue, tmp_path):
     out = str(tmp_path / "clip.tif")
     res = tb.ClipForAnalysis(lonlat_extent(AOI), "dtm", None, out, None,
-                             ["Hillshade (multidirectional)", "Local relief model"],
+                             ["Hillshade", "Local relief model"],
                              300, 30, 1000)
     assert "Download: about" in res.getMessages(0)        # the estimate, as information
     ds = gdal.Open(out)
@@ -464,7 +464,7 @@ def test_mosaic_mode_makes_its_connection_but_needs_cloud_tiles(tb, catalogue, t
 
 def test_terrain_tool_single_sun(tb, dem_tif, tmp_path, pyt):
     """Across a N-S fault the sun shines from the west (270, the side nearer 315)."""
-    res = tb.TerrainStack(dem_tif, ["Hillshade (multidirectional)"], 300, 25,
+    res = tb.TerrainStack(dem_tif, ["Hillshade"], 300, 25,
                           str(tmp_path), "Across a fault trend", None, 0, 2)
     lyrx = res.getOutput(0)
     assert os.path.basename(lyrx) == "dem_hillshade_az270_z2.lyrx"
@@ -478,7 +478,7 @@ def test_terrain_tool_single_sun(tb, dem_tif, tmp_path, pyt):
 def test_current_view_tool_offline(tb, pyt, catalogue, tmp_path):
     """The one-click tool with an extent (headless: no view), VRT output."""
     res = tb.GEM15ForCurrentView("DTM (bare earth)",
-                                 ["Hillshade (multidirectional)", "Local relief model",
+                                 ["Hillshade", "Local relief model",
                                   pyt.EDGES_LABEL], None, lonlat_extent(AOI), "VRT file")
     outs = res.getOutput(0).split(";")
     assert outs[0].endswith("_epsg32759.vrt") and os.path.exists(outs[0])

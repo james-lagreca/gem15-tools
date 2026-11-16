@@ -151,7 +151,7 @@ def test_vrt_across_zones(tb, tmp_path):
 def test_current_view_tool_with_canopy_and_edges(tb, pyt, tmp_path):
     """The one-click tool, given an extent (headless there is no view): a VRT,
     live layers, the canopy check and the tile edges."""
-    layers = ["Hillshade (multidirectional)", "Local relief model",
+    layers = ["Hillshade", "Local relief model",
               pyt.CANOPY_LABEL, pyt.EDGES_LABEL]
     res = tb.GEM15ForCurrentView("DTM (bare earth)", layers, None, lonlat_extent(VIC),
                                  "VRT file")
@@ -203,7 +203,7 @@ def test_terrain_stack_on_cloud_mosaic_is_quick(tb, pyt, acs, gdb, tmp_path):
     md = tb.AddGEM15ForExtent(lonlat_extent(VIC), "dtm", "Mosaic dataset", acs,
                               gdb).getOutput(0)
     t = time.perf_counter()
-    files = tb.TerrainStack(md, ["Hillshade (multidirectional)", "Local relief model"], 300,
+    files = tb.TerrainStack(md, ["Hillshade", "Local relief model"], 300,
                             30, str(tmp_path)).getOutput(0).split(";")
     assert time.perf_counter() - t < 120
     x0, _, _, y1 = gdalops.aoi_bounds_in("EPSG:32755", VIC)
