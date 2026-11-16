@@ -141,8 +141,13 @@ def test_metadata():
     assert "This dataset is produced by Google" in g["about"]
     assert g["hasProcessingProvider"] == "yes"
     assert (PLUGIN / g["icon"]).is_file()
-    assert "@" not in g.get("email", ""), "no personal email in the public metadata"
     assert re.fullmatch(r"\d+\.\d+\.\d+", g["version"])
+    # plugins.qgis.org refuses an upload without these.
+    assert g["author"].strip() and "contributors" not in g["author"]
+    assert re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", g["email"])
+    repo = "https://github.com/james-lagreca/gem15-tools"
+    assert g["repository"] == g["homepage"] == repo
+    assert g["tracker"] == repo + "/issues"
 
 
 def _plugin_sources():

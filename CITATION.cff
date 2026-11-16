@@ -1,13 +1,15 @@
 # How to cite the GEM-15 tools (the software). The data have their own
 # citation: Batchu et al. (2026), https://doi.org/10.31223/X55N75.
-# TODO before release: replace the placeholder author with the real authors.
 cff-version: 1.2.0
 message: "If you use these tools, please cite them, and cite the GEM-15 data (see references)."
 title: "GEM-15 tools: ArcGIS Pro toolbox and QGIS plugin for streaming GEM-15 elevation"
 version: 0.1.0
 license: GPL-2.0-or-later
+repository-code: "https://github.com/james-lagreca/gem15-tools"
 authors:
-  - name: "GEM-15 tools contributors"
+  - given-names: James
+    family-names: "La Greca"
+    affiliation: "University of Melbourne"
 keywords:
   - GEM-15
   - digital elevation model
