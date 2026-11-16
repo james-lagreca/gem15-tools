@@ -8,8 +8,10 @@ on:
 
 jobs:
   core:
-    runs-on: ubuntu-latest
+    # Pinned: ubuntu-latest (26.04) has no Python 3.9 builds for setup-python.
+    runs-on: ubuntu-24.04
     strategy:
+      fail-fast: false      # a failure on one Python must not cancel the other
       matrix:
         python-version: ["3.9", "3.12"]     # 3.9 as in QGIS 3.28
     steps:
