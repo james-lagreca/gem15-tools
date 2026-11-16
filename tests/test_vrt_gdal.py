@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
 """The pure-Python VRT, opened by GDAL on synthetic tiles: it must match
 gdal.BuildVRT pixel for pixel, fill overlaps correctly and expose overviews."""
 import pytest

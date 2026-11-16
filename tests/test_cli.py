@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
 """gdalops.build_vrt and the gem15_vrt.py command line, on synthetic tiles
 straddling UTM 59S/60S (needs GDAL and numpy)."""
 import importlib.util

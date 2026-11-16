@@ -31,8 +31,8 @@ except ImportError:                   # Qt5
     from qgis.PyQt.QtWidgets import QAction, QActionGroup
 
 from . import network, settings, view
-from .gem15core import (ATTRIBUTION, CAVEAT, CITATION, MAP_CREDIT, VERTICAL_DATUM,
-                        Gem15Error, terrain)
+from .gem15core import (ATTRIBUTION, CAVEAT, CITATION, DATA_LICENCE_URL, DISCLAIMER,
+                        MAP_CREDIT, VERTICAL_DATUM, Gem15Error, terrain)
 
 MENU = "&GEM-15"
 LOG_TAG = "GEM-15"
@@ -173,7 +173,7 @@ class Gem15Plugin:
             bar.pushWarning("GEM-15", tr(
                 f"The view spans about {n} one-degree cells. Zoom in to at most "
                 f"{settings.MAX_VIEW_CELLS} (about 6 x 6 degrees), or use "
-                "Processing > GEM-15 > Build GEM-15 VRT for a larger area."))
+                "Build GEM-15 VRT (Processing Toolbox > GEM-15) for a larger area."))
             return
         # The button keeps DTM as its default: switching to the last action
         # could leave it on the live LRM, which is invisible when zoomed out.
@@ -226,10 +226,13 @@ class Gem15Plugin:
         QMessageBox.information(
             self.iface.mainWindow(), tr("About GEM-15"),
             tr("GEM-15: 15 m global elevation (DTM and DSM).\n\n"
-               f"{ATTRIBUTION}. Licence CC-BY 4.0.\nPlease cite {CITATION}.\n\n"
+               f"\"{ATTRIBUTION}\". Licence CC BY 4.0 ({DATA_LICENCE_URL}).\n"
+               f"Please cite {CITATION}.\n\n"
                f"Heights: {VERTICAL_DATUM}. The DTM is predicted by machine learning: treat "
                "it with care under canopy. Tile overlaps and acquisition seams can look like "
-               "scarps.\n\nVRTs are written to:\n" + settings.output_folder()))
+               f"scarps.\n\n{DISCLAIMER}\n\nThis plugin: GPL-2.0-or-later, "
+               "https://github.com/james-lagreca/gem15-tools\n\n"
+               "VRTs are written to:\n" + settings.output_folder()))
 
 
 def _in_project(source):

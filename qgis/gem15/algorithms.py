@@ -26,8 +26,8 @@ from qgis.PyQt.QtCore import QCoreApplication
 from . import estimate, network, settings, view
 from . import layers as layers_mod
 from .compat import enum
-from .gem15core import (ATTRIBUTION, CITATION, PIXEL_M, STAC_COLLECTION_URL, Gem15Error,
-                        crs, stac, terrain)
+from .gem15core import (ATTRIBUTION, CITATION, DATA_LICENCE_URL, DISCLAIMER, MAP_CREDIT,
+                        PIXEL_M, STAC_COLLECTION_URL, Gem15Error, crs, stac, terrain)
 
 # (product, band, label) offered for every algorithm.
 LAYER_CHOICES = [
@@ -42,14 +42,15 @@ RESAMPLING = ["bilinear", "cubic", "near"]
 # Labels for gem15core.terrain.ILLUMINATIONS, in the same order.
 ILLUMINATIONS = ["Multidirectional", "Single sun (azimuth below)",
                  "Across a fault trend (trend below)"]
-CREDIT = (f"<p>Data: GEM-15, CC-BY 4.0. \"{ATTRIBUTION}\". Please cite {CITATION}. "
-          "Heights are EGM96 orthometric (EPSG:5773).</p>")
+CREDIT = (f"<p>Data: GEM-15, <a href=\"{DATA_LICENCE_URL}\">CC BY 4.0</a>. \"{ATTRIBUTION}\". "
+          f"Please cite {CITATION}. Heights are EGM96 orthometric (EPSG:5773).</p>"
+          f"<p>{DISCLAIMER}</p>")
 AUTO_CRS_HELP = (
     "<p><b>Automatic CRS</b>: tiles in one UTM zone keep their native 15 m grid (nothing "
     "is resampled). Across zones: GDA2020 / GA LCC (EPSG:7845) in Australia, NZTM2000 "
-    "(EPSG:2193) in New Zealand, else a conformal projection centred on the area. GA LCC "
-    "has up to ~1.2 % scale error in central Australia: fine for display, check it before "
-    "measuring.</p>")
+    "(EPSG:2193) in New Zealand, else a conformal projection centred on the area. GA LCC's "
+    "scale error runs from -1.2 % in central Australia to about +3 % in the far north and "
+    "Tasmania: fine for display, check it before measuring distances.</p>")
 
 # Post-processors must outlive processAlgorithm (QGIS calls them afterwards
 # on the main thread), so references are kept here.
@@ -108,11 +109,13 @@ def _crs_string(qcrs):
 class _Base(QgsProcessingAlgorithm):
     """Shared parameters and helpers."""
 
+    # No group: the provider is already "GEM-15", and a group of the same name
+    # showed the tools under GEM-15 > GEM-15 in the Processing Toolbox.
     def group(self):
-        return tr("GEM-15")
+        return ""
 
     def groupId(self):
-        return "gem15"
+        return ""
 
     def createInstance(self):
         return type(self)()
@@ -562,9 +565,10 @@ class SwathProfileAlgorithm(_Base):
         except (Gem15Error, ValueError) as e:
             raise QgsProcessingException(str(e))
         out_csv = self.parameterAsFileOutput(parameters, "OUTPUT_CSV", context)
-        profile.to_csv(sw, out_csv, fit)
+        profile.to_csv(sw, out_csv, fit, source=f"{dem.source()} ({dem.crs().authid()})")
         out_png = self.parameterAsFileOutput(parameters, "OUTPUT_PNG", context)
-        png = profile.plot_png(sw, out_png, fit, title=f"Swath profile, {width:g} m wide") \
+        png = profile.plot_png(sw, out_png, fit,
+                               title=f"Swath profile, {width:g} m wide ({MAP_CREDIT})") \
             if out_png else None
         feedback.pushInfo(tr(f"{sw.length_m:,.0f} m long, {len(sw.distance)} steps. "
                              f"Wrote {out_csv}" + (f" and {png}" if png else "")))

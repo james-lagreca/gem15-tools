@@ -319,8 +319,9 @@ def test_csv(tmp_path):
     assert profile.to_csv(sw, path, fit) == path
     lines = path.read_text(encoding="utf-8").splitlines()
     comments = [ln for ln in lines if ln.startswith("#")]
-    assert lines[:len(comments)] == comments and len(comments) == len(fit.describe()) + 1
+    assert lines[:len(comments)] == comments and len(comments) == len(fit.describe()) + 2
     assert "Vertical separation" in comments[0]
+    assert "EGM96" in comments[-1] and "produced by Google" in comments[-1]
     rows = list(csv.reader(lines[len(comments):]))
     assert tuple(rows[0]) == profile.CSV_COLUMNS == (
         "distance_m", "n", "min_m", "p25_m", "median_m", "p75_m", "max_m", "mean_m")
@@ -329,10 +330,12 @@ def test_csv(tmp_path):
     assert float(rows[1][4]) == pytest.approx(sw.median[0], abs=5e-4)
     empty = [r for r in rows[1:] if r[1] == "0"]
     assert empty and all(cell == "" for r in empty for cell in r[2:])   # no data -> blank
-    # Without a fit there are no comment lines.
+    # Without a fit: only the provenance lines; with a source, it is named.
     plain = tmp_path / "plain.csv"
-    profile.to_csv(sw, plain)
-    assert plain.read_text(encoding="utf-8").splitlines()[0] == ",".join(profile.CSV_COLUMNS)
+    profile.to_csv(sw, plain, source="dem.vrt (EPSG:32755)")
+    head = plain.read_text(encoding="utf-8").splitlines()
+    assert head[0].startswith("# Swath") and head[1] == "# DEM: dem.vrt (EPSG:32755)"
+    assert head[3] == ",".join(profile.CSV_COLUMNS)
 
 
 def test_png(tmp_path):

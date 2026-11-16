@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
 """extent_to_lonlat in the .pyt, with a minimal fake arcpy that records what it is given.
 
 The fake "projection" is linear: lon = x / 1e5, lat = y / 1e5 - 100, with

@@ -8,7 +8,8 @@
 | `arcgis/` | ArcGIS Pro toolbox `GEM15Tools.pyt`; `gem15help.py` (hover help text); generated `GEM15Tools*.pyt.xml`; vendored `gem15core/`. |
 | `qgis/gem15/` | QGIS plugin; vendored `gem15core/`. |
 | `cli/` | Command-line VRT builder. |
-| `tools/` | `vendor_core.py`, `build_pyt_help.py`, `package_qgis_plugin.py`, `package_arcgis_toolbox.py`, `qgis_python.py`. |
+| `tools/` | `vendor_core.py`, `build_pyt_help.py`, `package_qgis_plugin.py`, `package_arcgis_toolbox.py`, `check_release.py`, `qgis_python.py`. |
+| `docs/images/` | Pictures for the README. |
 | `tests/` | pytest suite; `tests/qgis_plugin/` needs QGIS's Python. |
 
 Modules flag their assumptions in their docstrings with short codes (A1 in
@@ -55,17 +56,23 @@ python tools/qgis_python.py --pytest-from "<ArcGIS Pro>\bin\Python\envs\arcgispr
 
 ## Releasing
 
-1. Set the version in `core/gem15core/__init__.py` and
-   `qgis/gem15/metadata.txt` (keep them equal), and add a `CHANGELOG.md`
-   entry.
+1. Set the version in `core/gem15core/__init__.py`,
+   `qgis/gem15/metadata.txt` and `CITATION.cff` (a test fails if they
+   differ). Add a dated `CHANGELOG.md` entry, `## <version> (YYYY-MM-DD)`,
+   and the same date as `date-released` in `CITATION.cff`.
 2. Run `python tools/vendor_core.py` and `python tools/build_pyt_help.py`,
-   then both test suites.
+   then both test suites. `python tools/check_release.py v<version>` does
+   the release workflow's own checks.
 3. Tag `v<version>` and push the tag. GitHub Actions
-   (`.github/workflows/release.yml`) builds `gem15-<version>.zip` (QGIS) and
-   `gem15-arcgis-<version>.zip` (ArcGIS) and attaches them to a release. To
-   build them locally: `python tools/package_qgis_plugin.py` and
+   (`.github/workflows/release.yml`) checks the versions, runs the core
+   tests, builds `gem15-qgis-<version>.zip` and `gem15-arcgis-<version>.zip`
+   and attaches them to a **draft** release with the CHANGELOG entry as its
+   notes. Check the draft, then publish it. To build the zips locally:
+   `python tools/package_qgis_plugin.py` and
    `python tools/package_arcgis_toolbox.py` (both write to `dist/`).
-4. Upload the QGIS zip to plugins.qgis.org (it needs a login; done by a
+4. The repository must be public before the QGIS zip is uploaded to
+   plugins.qgis.org: the site checks that the repository, tracker and
+   homepage links answer. Uploading needs an OSGeo login (done by a
    maintainer).
 
 ## Checks to do by hand

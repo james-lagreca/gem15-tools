@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
 """Lon/lat box helpers, including the antimeridian (pure Python)."""
 import pytest
 

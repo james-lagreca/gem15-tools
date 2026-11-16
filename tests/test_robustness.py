@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""Failure handling found by the 2026-11-15 robustness review: catalogue
+"""Failure handling: catalogue
 responses that are not STAC, network errors, huge areas, poles, coordinate
 systems in degrees or feet, GDAL with exceptions on or off, cancelled clips.
 No network access."""

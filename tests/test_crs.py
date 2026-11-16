@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
 """UTM helpers and the automatic CRS choice. The GDAL and arcpy checks are
 skipped where those libraries are missing."""
 import pytest

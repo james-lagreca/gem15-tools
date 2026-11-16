@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
 """VRT writer arithmetic, checked on the XML alone (pure Python, no GDAL)."""
 import xml.etree.ElementTree as ET
 

@@ -22,8 +22,9 @@ Assumptions and choices (flagged):
  S1. The array's geotransform (GDAL order: x0, dx, 0, y0, 0, -dy) is north-up
      with no rotation, in a projected CRS in metres, and the line is in the
      same CRS. Distances are grid distances: no scale-factor correction (UTM
-     within its zone is within 0.04 % of true; GA LCC, EPSG 7845, up to about
-     1.2 %). Heights are unaffected; slopes carry the same small error. A pixel
+     within its zone is within 0.04 % of true; GA LCC, EPSG 7845, from -1.2 %
+     in central Australia to about +3 % in the far north and Tasmania).
+     Heights are unaffected; slopes carry the same small error. A pixel
      size under 0.01 is taken to mean degrees and refused.
  S2. Bilinear interpolation between the four nearest pixel centres. A sample
      is NaN if any of the four is NaN or lies outside the array (rather than
@@ -168,9 +169,10 @@ class ScarpFit:
         steep = ("n/a (no valid bins between the ranges)"
                  if math.isnan(self.steepest_slope_deg) else
                  f"{self.steepest_slope_deg:.1f} deg at {self.steepest_at_m:.0f} m")
-        return [
-            f"Vertical separation {self.separation_m:.2f} +/- {self.separation_sigma_m:.2f} m "
-            f"(1 sigma, lower bound) at {self.midpoint_m:.0f} m, from the {self.stat} profile",
+        lines = [
+            f"Vertical separation {self.separation_m:.1f} m at {self.midpoint_m:.0f} m, from "
+            f"the {self.stat} profile; 1-sigma fit error {self.separation_sigma_m:.2f} m "
+            "(a lower bound: the DEM's own error is not included)",
             f"Upper far field {u0:.0f}-{u1:.0f} m: {self.upper.n} bins, "
             f"slope {self.upper_slope_deg:.2f} deg, rms {self.upper.rms_m:.2f} m",
             f"Lower far field {l0:.0f}-{l1:.0f} m: {self.lower.n} bins, "
@@ -178,6 +180,14 @@ class ScarpFit:
             f"Steepest slope between the ranges (3-bin gradient): {steep}",
             "Slopes are signed: positive where the surface rises along the line.",
         ]
+        diff = abs(self.upper_slope_deg - self.lower_slope_deg)
+        if diff > 1.0:                 # the separation then depends on where it is taken
+            per_50 = 50.0 * abs(math.tan(math.radians(self.upper_slope_deg))
+                                - math.tan(math.radians(self.lower_slope_deg)))
+            lines.append(f"The far-field slopes differ by {diff:.1f} deg, so the separation "
+                         f"changes by about {per_50:.1f} m for every 50 m the measuring point "
+                         "moves: report where it was measured.")
+        return lines
 
 
 # --------------------------------------------------------------------------
@@ -460,15 +470,24 @@ def _cell(v, fmt="{:.3f}"):
     return "" if not np.isfinite(v) else fmt.format(float(v))
 
 
-def to_csv(swath, path, fit: Optional[ScarpFit] = None):
+def to_csv(swath, path, fit: Optional[ScarpFit] = None, source=None):
     """Write the swath to CSV (columns CSV_COLUMNS; no data = empty cell).
-    With a fit, its summary goes first as '#' comment lines. Returns path."""
+    '#' comment lines come first: the fit's summary (with a fit), then where
+    the heights came from (`source`: the DEM and its CRS, as the caller
+    knows them), the line's ends, the datum, the credit and the tools'
+    version. Returns path."""
+    from . import CITATION_SHORT, MAP_CREDIT, VERTICAL_DATUM, __version__
     with open(path, "w", newline="", encoding="utf-8") as f:
-        if fit is not None:
-            for line in fit.describe():
-                f.write("# " + line + "\n")
-            f.write(f"# Swath {swath.width_m:g} m wide, {swath.step_m:g} m steps, "
-                    f"line {swath.length_m:.1f} m long\n")
+        for line in (fit.describe() if fit is not None else []):
+            f.write("# " + line + "\n")
+        f.write(f"# Swath {swath.width_m:g} m wide, {swath.step_m:g} m steps, "
+                f"line {swath.length_m:.1f} m long, from ({swath.station_x[0]:.1f}, "
+                f"{swath.station_y[0]:.1f}) to ({swath.station_x[-1]:.1f}, "
+                f"{swath.station_y[-1]:.1f}) in the DEM's CRS\n")
+        if source:
+            f.write(f"# DEM: {source}\n")
+        f.write(f"# Heights in m on the {VERTICAL_DATUM}. {MAP_CREDIT}; cite "
+                f"{CITATION_SHORT}. Written by gem15-tools {__version__}\n")
         w = csv.writer(f)
         w.writerow(CSV_COLUMNS)
         for i in range(len(swath.distance)):
@@ -520,7 +539,8 @@ def plot_png(swath, path, fit: Optional[ScarpFit] = None, title=""):
         ax.annotate("", xy=(fit.midpoint_m, zu), xytext=(fit.midpoint_m, zl),
                     arrowprops=dict(arrowstyle="<->", color=_C_INK, linewidth=1.0,
                                     shrinkA=0, shrinkB=0))
-        ax.annotate(f"VS {fit.separation_m:.2f} ± {fit.separation_sigma_m:.2f} m",
+        ax.annotate(f"VS {fit.separation_m:.1f} m\n(1σ fit error {fit.separation_sigma_m:.2f} m;"
+                    "\nDEM error not included)",
                     xy=(fit.midpoint_m, 0.5 * (zu + zl)), xytext=(8, 0),
                     textcoords="offset points", va="center", ha="left",
                     color=_C_INK, fontsize=9)

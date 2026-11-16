@@ -1,4 +1,12 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Part of the GEM-15 tools: https://github.com/james-lagreca/gem15-tools
 /**** GEM-15 fault-mapping viewer - Google Earth Engine Code Editor ****
+ *
+ * Status: syntax-checked only; not yet run in the Code Editor.
+ * Data: GEM-15, CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/).
+ * "This dataset is produced by Google". Cite Batchu et al. (2026),
+ * doi:10.31223/X55N75. Credit it on any map or export. An independent
+ * script, not affiliated with or endorsed by Google.
  *
  * Paste into https://code.earthengine.google.com and press Run.
  * Everything is computed on Google's servers; nothing is downloaded.
@@ -18,8 +26,8 @@
  *  - Local relief model (LRM) = DTM minus a circular focal mean of radius
  *    LRM_RADIUS_M. Tune to roughly 2-5x the landform width you are after.
  *  - DTM - Copernicus GLO-30 mixes EGM96 (GEM-15) and EGM2008 (Copernicus)
- *    geoids; the difference is usually < 1 m [VERIFY locally], so use this
- *    layer for spotting seams and artefacts, not absolute offsets.
+ *    geoids, which differ locally (check the difference for your area), so
+ *    use this layer for spotting seams and artefacts, not absolute offsets.
  */
 
 // ---------- User settings ----------
@@ -73,6 +81,7 @@ print('Tip: Inspector tab (top right) reads values from every layer at a click.'
 
 // ---------- Optional: export a clip to Google Drive (not your PC) ----------
 // Uncomment, Run, then start the task in the Tasks tab. Writes float32 GeoTIFF
+// (credit it: "Elevation: GEM-15 (CC BY 4.0). This dataset is produced by Google")
 // on the native UTM grid, so it lines up with the source pixels.
 /*
 var box = CENTRE.buffer(EXPORT_HALF_WIDTH_M).bounds();

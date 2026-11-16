@@ -1,10 +1,15 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
 # Core tests on every push. GDAL, arcpy and QGIS are not installed here, so
 # the tests needing them skip; run those locally (CONTRIBUTING.md).
-name: tests
+name: core tests
 
 on:
   push:
   pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   core:
@@ -13,16 +18,16 @@ jobs:
     strategy:
       fail-fast: false      # a failure on one Python must not cancel the other
       matrix:
-        python-version: ["3.9", "3.12"]     # 3.9 as in QGIS 3.28
+        python-version: ["3.9", "3.12"]     # 3.9 as in QGIS 3.28 and ArcGIS Pro 3.0-3.2
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install test tools
         run: python -m pip install pytest numpy pyflakes
       - name: Lint
-        run: python -m pyflakes core cli tools qgis/gem15 arcgis/gem15help.py
+        run: python -m pyflakes core cli tools qgis/gem15 arcgis/gem15help.py arcgis/GEM15Tools.pyt
       - name: Vendored core matches core/gem15core
         run: python tools/vendor_core.py --check
       - name: ArcGIS help files are current

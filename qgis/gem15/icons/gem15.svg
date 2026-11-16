@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- SPDX-License-Identifier: GPL-2.0-or-later. GEM-15 tools plugin icon: a shaded fault scarp. -->
+<!-- SPDX-License-Identifier: GPL-2.0-or-later -->
+<!-- GEM-15 tools plugin icon: a shaded fault scarp. -->
 <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
   <rect x="2" y="2" width="60" height="60" rx="8" fill="#3b4f5c"/>
   <path d="M6 46 L22 30 L30 36 L30 24 L44 12 L58 26 L58 58 L6 58 Z" fill="#c9c2b4"/>

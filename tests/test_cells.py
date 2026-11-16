@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
 """Group and cell names (pure Python)."""
 from gem15core import cells
 

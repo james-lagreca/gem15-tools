@@ -1,6 +1,8 @@
-# On a version tag (v0.1.0 ...): build the QGIS plugin zip and the ArcGIS
-# toolbox zip and attach them to a GitHub release. Not run yet: check the
-# first release by hand.
+# SPDX-License-Identifier: GPL-2.0-or-later
+# On a version tag (v0.1.0 ...): check that the tag matches every version
+# string and the CHANGELOG entry is dated, run the core tests, build the QGIS
+# plugin zip and the ArcGIS toolbox zip, and attach them to a DRAFT GitHub
+# release whose notes come from CHANGELOG.md. Check the draft, then publish it.
 name: release
 
 on:
@@ -12,16 +14,28 @@ permissions:
 
 jobs:
   zips:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
+      - name: Tag matches the version everywhere; notes from CHANGELOG.md
+        run: python tools/check_release.py "$GITHUB_REF_NAME" --notes notes.md
+      - name: Install test tools
+        run: python -m pip install pytest numpy pyflakes
+      - name: Lint
+        run: python -m pyflakes core cli tools qgis/gem15 arcgis/gem15help.py arcgis/GEM15Tools.pyt
+      - name: Tests
+        run: python -m pytest -q
       - name: Build the zips (stops if the vendored core or help files are stale)
         run: |
           python tools/package_qgis_plugin.py
           python tools/package_arcgis_toolbox.py
-      - uses: softprops/action-gh-release@v2
+      # Pinned to a commit: this step holds a token that can write releases.
+      - uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3  # v3.0.4
         with:
+          draft: true
+          body_path: notes.md
           files: dist/*.zip
+          fail_on_unmatched_files: true

@@ -75,7 +75,8 @@
 			<bullet_item>With a Standard or Advanced licence the elevation is a mosaic dataset; with Basic, a VRT file. Both stream from Google's public bucket; no account needed.</bullet_item>
 			<bullet_item>The local relief model is drawn at 1:50,000 and closer: zoom in to see it.</bullet_item>
 			<bullet_item>The DTM is predicted by machine learning: unreliable under trees and buildings (the canopy check shows where). Straight features along tile edges may be seams, not scarps. Heights are on the EGM96 geoid, not AHD.</bullet_item>
-			<bullet_item>Credit: Elevation: GEM-15, produced by Google (CC BY 4.0). Cite Batchu et al. (2026), doi:10.31223/X55N75.</bullet_item>
+			<bullet_item>Credit: Elevation: GEM-15 (CC BY 4.0). This dataset is produced by Google. Cite Batchu et al. (2026), doi:10.31223/X55N75.</bullet_item>
+			<bullet_item>An independent project, not affiliated with or endorsed by Google. Provided as is, without warranty; not for hazard assessment, planning, engineering or safety decisions without lidar and field checks.</bullet_item>
 		</usage>
 	</tool>
 	<dataIdInfo>

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
 """Checks against the live, public GEM-15 bucket (anonymous, read-only).
 
 Skipped unless GEM15_LIVE=1. Each run fetches a few small JSON documents and,

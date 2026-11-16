@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""QGIS features added after the 2026-11-15 review: canopy check, tile edges,
-single-sun hillshade, swath profile, dsm_std styling, no duplicate layers.
-Synthetic catalogue, no network."""
+"""QGIS plugin features: canopy check, tile edges, single-sun hillshade,
+swath profile, dsm_std styling, no duplicate layers. Synthetic catalogue, no
+network."""
 import pytest
 
 np = pytest.importorskip("numpy")

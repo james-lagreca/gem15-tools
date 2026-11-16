@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
 """Catalogue lookup and cache, against an in-memory fake catalogue (pure Python)."""
 import io
 import json

@@ -6,7 +6,8 @@ Build the ArcGIS Pro toolbox zip for a release.
     python tools/package_arcgis_toolbox.py         # -> dist/gem15-arcgis-<version>.zip
 
 The zip holds one top-level folder, gem15-arcgis/, with GEM15Tools.pyt, its
-help files (.pyt.xml), its vendored gem15core and the GPL licence. Unzip it
+help files (.pyt.xml), its vendored gem15core, the GPL licence and the project
+README (gem15help.py, the source of the help files, is left out). Unzip it
 to a permanent folder and add GEM15Tools.pyt in Pro. The script stops if the
 vendored core has drifted from core/gem15core or the help files are stale.
 """
@@ -20,6 +21,8 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ARCGIS = os.path.join(ROOT, "arcgis")
 SKIP_DIRS = {"__pycache__", ".pytest_cache"}
 SKIP_EXT = (".pyc", ".pyo", ".aux.xml")
+# Pro's own toolbox metadata (rewritten on every load), and the help source.
+SKIP_FILES = {"GEM15Tools.pyt.xml", "gem15help.py"}
 
 
 def version():
@@ -46,12 +49,13 @@ def build(out_dir):
         for folder, dirs, files in os.walk(ARCGIS):
             dirs[:] = sorted(d for d in dirs if d not in SKIP_DIRS)
             for name in sorted(files):
-                if name.endswith(SKIP_EXT) or name == "GEM15Tools.pyt.xml":   # Pro's own
+                if name.endswith(SKIP_EXT) or name in SKIP_FILES:
                     continue
                 full = os.path.join(folder, name)
                 rel = os.path.relpath(full, ARCGIS).replace(os.sep, "/")
                 z.write(full, "gem15-arcgis/" + rel)
         z.write(os.path.join(ROOT, "LICENSE"), "gem15-arcgis/LICENSE")
+        z.write(os.path.join(ROOT, "README.md"), "gem15-arcgis/README.md")
     return path
 
 

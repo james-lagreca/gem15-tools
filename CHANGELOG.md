@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.0 (unreleased)
+## 0.1.0 (2026-11-16)
 
 First release: an ArcGIS Pro toolbox and a QGIS plugin that stream Google's
 GEM-15 15 m elevation for active-fault mapping, sharing one core.
@@ -9,8 +9,9 @@ ArcGIS Pro toolbox:
 - **GEM-15 for Current View**: no inputs; adds the elevation for the view
   (mosaic dataset, or a VRT with a Basic licence), a live hillshade and local
   relief model in one group, and the tile edges.
-- **Swath Profile**: a band profile across a scarp, with a scarp-height
-  estimate; CSV and PNG.
+- **Swath Profile**: a band profile across a scarp, with the vertical
+  separation between far-field fits and its fit error; CSV (with source,
+  datum and credit) and PNG.
 - Step by step: Connect to GEM-15, Add GEM-15 for Extent, Terrain Stack,
   Clip for Analysis.
 - Hover help on every tool and parameter.
@@ -27,4 +28,7 @@ Both:
 - Hillshade: multidirectional, one sun, or lit across a fault trend; vertical
   exaggeration. Fixed colour ranges for the terrain layers.
 - Catalogue lookup cached for 30 days; size limits, cancel, clear errors for
-  network trouble; GEM-15 credit and caveats on every layer.
+  network trouble; GEM-15 credit, licence, citation and caveats on every
+  layer.
+- Runs on the Python of ArcGIS Pro 3.0 and later and QGIS 3.28 and later
+  (3.9+).

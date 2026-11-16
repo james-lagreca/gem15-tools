@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
 """GEM15Tools.pyt helpers, loaded with a stub arcpy (no ArcGIS needed)."""
 import importlib.machinery
 import importlib.util

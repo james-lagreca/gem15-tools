@@ -38,8 +38,8 @@ import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from typing import Tuple
 
-from . import (ATTRIBUTION, CITATION, COG_BLOCK_PX, DATA_LICENCE, PIXEL_M,
-               VERTICAL_DATUM, Gem15Error, crs, paths)
+from . import (ATTRIBUTION, CITATION, COG_BLOCK_PX, DATA_LICENCE, DATA_LICENCE_URL,
+               PIXEL_M, VERTICAL_DATUM, Gem15Error, crs, paths)
 
 # The COGs carry 4 internal overviews (an 8192 px tile down to 512 px): V6.
 COG_OVERVIEW_FACTORS = (2, 4, 8, 16)
@@ -127,7 +127,7 @@ def write_vrt(tiles, product, out_path, band_name=None, bounds=None,
     md = ET.SubElement(root, "Metadata")
     for k, v in (("SOURCE", "GEM-15 15 m elevation (Google)"),
                  ("ATTRIBUTION", ATTRIBUTION), ("LICENCE", DATA_LICENCE),
-                 ("CITATION", CITATION), ("VERTICAL_DATUM", VERTICAL_DATUM),
+                 ("LICENCE_URL", DATA_LICENCE_URL), ("CITATION", CITATION), ("VERTICAL_DATUM", VERTICAL_DATUM),
                  ("PRODUCT", product), ("BAND", band_name)):
         ET.SubElement(md, "MDI", key=k).text = v
 

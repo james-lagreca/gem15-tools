@@ -4,6 +4,7 @@ cff-version: 1.2.0
 message: "If you use these tools, please cite them, and cite the GEM-15 data (see references)."
 title: "GEM-15 tools: ArcGIS Pro toolbox and QGIS plugin for streaming GEM-15 elevation"
 version: 0.1.0
+date-released: "2026-11-16"
 license: GPL-2.0-or-later
 repository-code: "https://github.com/james-lagreca/gem15-tools"
 authors:
@@ -17,10 +18,23 @@ keywords:
   - ArcGIS Pro
   - QGIS
 references:
-  - type: generic
-    title: "GEM-15 global 15 m elevation (EarthArXiv preprint)"
+  - type: article
+    status: preprint
+    title: "GEM-15: Global surface and terrain elevation models (15 meters) from sub-meter optical stereo imagery"
+    journal: EarthArXiv
     doi: 10.31223/X55N75
+    url: "https://eartharxiv.org/repository/view/16034/"
     year: 2026
     authors:
       - family-names: Batchu
-      - name: "et al."
+        given-names: "V. V."
+      - family-names: Neumann
+        given-names: M.
+      - family-names: Li
+        given-names: T.
+      - family-names: Allen
+        given-names: B.
+      - family-names: Zhang
+        given-names: J.
+      - family-names: "Van Arsdale"
+        given-names: C.

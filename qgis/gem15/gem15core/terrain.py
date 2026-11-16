@@ -8,17 +8,22 @@ Choices (flagged; tune for your landforms):
      sun picks out low scarps; multidirectional avoids hiding scarps parallel
      to one light direction, but gives some fault strikes only about a third
      of the contrast of a sun shining straight across them (a 5 degree scarp
-     face: 7 % against 24 % relative contrast, 2026-11-15 review). So a
+     face: 7 % against 24 % relative contrast, computed 2026-11-15). So a
      single sun is offered too, and "across a fault trend", which lights the
      scarp at right angles from the side nearer the north-west
      (sun_azimuth_across), so relief does not look inverted. Lower suns
      (about 20 degrees) suit plains, 30-35 degrees steep country.
  T2. Local relief model (LRM) = DTM minus its mean over a circle of radius
-     LRM_RADIUS_M. A radius of roughly 2 to 5 times the width of the
-     landforms you are after works: LRM_PRESETS_M. Live, the work grows with
-     the square of the radius (1000 m is about 10 times 300 m). Near masked
-     water the live LRM is blank within one radius; use a clip there.
- T3. Slope in degrees.
+     LRM_RADIUS_M: a simple local relief, the first step of Hesse (2010)'s
+     LRM (which goes on to fit a purged trend surface). Rule of thumb, not a
+     calibrated value: a radius of roughly 2 to 5 times the width of the
+     landforms you are after: LRM_PRESETS_M. Live, the work grows with the
+     square of the radius (1000 m is about 10 times 300 m). Near water, data
+     gaps and the edges of a clip the mean covers only part of the circle, so
+     the LRM is biased there (about 2.5 m on a 1 degree slope at 300 m): the
+     QGIS live LRM leaves that band blank; clips and ArcGIS's focal mean do
+     not, so ignore the LRM within one radius of them.
+ T3. Slope in degrees (Horn 1981, as GDAL and ArcGIS compute it).
  T4. z factor 1, because x, y and z are all metres. Exaggerating (2-3 on
      Australian plains) brings out subtle scarps but also the DTM's noise.
  T5. Fixed display ranges, not stretched to the view (DRA): hillshade 0-255,
@@ -32,8 +37,17 @@ Choices (flagged; tune for your landforms):
      ArcGIS may compute raster functions at screen resolution, which would
      widen a neighbourhood given in cells. At 1:50,000 a screen pixel is
      13.2 m at 96 dpi, finer than the 15 m grid.
- T7. Canopy check: where DSM minus DTM exceeds CANOPY_THRESHOLD_M, the DTM
-     is the model's guess at the ground under trees or buildings.
+ T7. Canopy check: where DSM minus DTM exceeds CANOPY_THRESHOLD_M, the model
+     removed trees or buildings and the DTM is its guess at the ground.
+     Shrubs under the threshold, crops, and canopy the model missed are not
+     flagged and can still bias the DTM.
+
+References: Horn, B. K. P. (1981), Hill shading and the reflectance map,
+Proc. IEEE 69, 14-47. Mark, R. K. (1992), Multidirectional, oblique-weighted,
+shaded-relief image of the Island of Hawaii, USGS Open-File Report 92-422.
+Hesse, R. (2010), LiDAR-derived Local Relief Models: a new tool for
+archaeological prospection, Archaeological
+Prospection 17, 67-72.
 """
 
 import math

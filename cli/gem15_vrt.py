@@ -35,8 +35,10 @@ GDAL >= 3.4 Python bindings (osgeo), as shipped with QGIS and ArcGIS Pro:
                           r"<output folder>\wairau_dtm.vrt", product="dtm")
         g.add_to_qgis(vrt)          # adds it with a multidirectional hillshade
 
-Data: CC-BY 4.0, "This dataset is produced by Google". Cite Batchu et al.
-(2026), EarthArXiv preprint, doi:10.31223/X55N75. Heights are EGM96.
+Data: CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/), "This
+dataset is produced by Google". Cite Batchu et al. (2026), EarthArXiv
+preprint, doi:10.31223/X55N75. Heights are EGM96. An independent project,
+not affiliated with or endorsed by Google; provided as is, without warranty.
 """
 
 import argparse

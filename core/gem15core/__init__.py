@@ -44,14 +44,26 @@ DSM_BANDS = ("dsm", "dsm_percentile_5", "dsm_percentile_50",
              "dsm_percentile_95", "dsm_std")
 DTM_BANDS = ("dtm",)
 
-# Heights, licence and how to credit the data.
+# Heights, licence and how to credit the data. ATTRIBUTION is the exact text
+# the CC BY 4.0 licence asks for (Earth Engine catalogue page for GEM-15,
+# checked 2026-11-16), as is the citation.
 VERTICAL_DATUM = "EGM96 geoid (EPSG:5773)"
 DATA_LICENCE = "CC-BY-4.0"
+DATA_LICENCE_URL = "https://creativecommons.org/licenses/by/4.0/"
 ATTRIBUTION = "This dataset is produced by Google"
-CITATION = ("Batchu et al. (2026), GEM-15, EarthArXiv preprint, "
-            "doi:10.31223/X55N75")
+CITATION = ("Batchu, V. V., Neumann, M., Li, T., Allen, B., Zhang, J., & Van Arsdale, C. "
+            "(2026). GEM-15: Global surface and terrain elevation models (15 meters) from "
+            "sub-meter optical stereo imagery. EarthArXiv [preprint]. doi:10.31223/X55N75")
+CITATION_SHORT = "Batchu et al. (2026), doi:10.31223/X55N75"
 CITATION_URL = "https://doi.org/10.31223/X55N75"
-MAP_CREDIT = "Elevation: GEM-15, produced by Google (CC BY 4.0)"
+MAP_CREDIT = "Elevation: GEM-15 (CC BY 4.0). This dataset is produced by Google"
+# CC BY 4.0 asks that changes be indicated: terrain layers computed from GEM-15.
+DERIVED_NOTE = "Derived from GEM-15 (modified: computed from the elevation)"
+
+# The tools are not Google's, and are not for safety decisions.
+DISCLAIMER = ("Independent project, not affiliated with or endorsed by Google. Provided "
+              "as is, without warranty; not for hazard assessment, planning, engineering "
+              "or safety decisions without lidar and field checks.")
 
 # Sent as the HTTP User-Agent. Deliberately generic: no user details.
 USER_AGENT = "gem15-tools/" + __version__

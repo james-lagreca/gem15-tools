@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
 """GEM15Tools.pyt with the real arcpy against the live, public bucket.
 
 Skipped unless GEM15_LIVE=1 and arcpy is present. Anonymous, read-only

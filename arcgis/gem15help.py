@@ -58,8 +58,11 @@ HELP = {
             "The DTM is predicted by machine learning: unreliable under trees and buildings "
             "(the canopy check shows where). Straight features along tile edges may be "
             "seams, not scarps. Heights are on the EGM96 geoid, not AHD.",
-            "Credit: Elevation: GEM-15, produced by Google (CC BY 4.0). Cite Batchu et al. "
-            "(2026), doi:10.31223/X55N75.",
+            "Credit: Elevation: GEM-15 (CC BY 4.0). This dataset is produced by Google. Cite "
+            "Batchu et al. (2026), doi:10.31223/X55N75.",
+            "An independent project, not affiliated with or endorsed by Google. Provided as "
+            "is, without warranty; not for hazard assessment, planning, engineering or safety "
+            "decisions without lidar and field checks.",
         ],
         "params": {
             "product": _PRODUCT,

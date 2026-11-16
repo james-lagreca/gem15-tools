@@ -30,8 +30,9 @@ from qgis.PyQt.QtGui import QColor
 
 from . import settings
 from .compat import enum
-from .gem15core import (ATTRIBUTION, CAVEAT, CITATION, DATA_LICENCE, MAP_CREDIT,
-                        VERTICAL_DATUM, Gem15Error, terrain)
+from .gem15core import (ATTRIBUTION, CAVEAT, CITATION, DATA_LICENCE, DATA_LICENCE_URL,
+                        DERIVED_NOTE, DISCLAIMER, MAP_CREDIT, VERTICAL_DATUM, Gem15Error,
+                        terrain)
 
 
 def hillshade_renderer(layer, band=1, azimuth=None, altitude=terrain.HILLSHADE_ALTITUDE,
@@ -101,14 +102,18 @@ def lrm_renderer(layer, band=1, half_range=None):
     return r
 
 
-def credit(layer, extra=""):
-    """Put the GEM-15 credit, licence and citation in a layer's metadata (R3)."""
+def credit(layer, extra="", derived=False):
+    """Put the GEM-15 credit, licence and citation in a layer's metadata (R3);
+    derived=True says the layer is computed from GEM-15 (CC BY 4.0 asks that
+    changes be indicated)."""
     md = layer.metadata() if hasattr(layer, "metadata") else QgsLayerMetadata()
     md.setTitle(layer.name())
+    note = f"{DERIVED_NOTE}. " if derived else ""
     md.setAbstract(
-        "GEM-15 15 m global elevation, streamed from Google's public Cloud-Optimised "
-        f"GeoTIFFs. Heights: {VERTICAL_DATUM}. {extra} {CAVEAT}".strip())
-    md.setRights([MAP_CREDIT, ATTRIBUTION, f"Licence: {DATA_LICENCE}", f"Cite: {CITATION}"])
+        f"{note}GEM-15 15 m global elevation, streamed from Google's public Cloud-Optimised "
+        f"GeoTIFFs. Heights: {VERTICAL_DATUM}. {extra} {CAVEAT} {DISCLAIMER}".strip())
+    md.setRights([MAP_CREDIT, ATTRIBUTION, f"Licence: {DATA_LICENCE} ({DATA_LICENCE_URL})",
+                  f"Cite: {CITATION}"])
     md.setLicenses([DATA_LICENCE])
     layer.setMetadata(md)
 
@@ -124,7 +129,7 @@ def make_layer(path, name, style):
     if style == "hillshade":
         layer.setRenderer(hillshade_renderer(layer))
         credit(layer, "Shown as a multidirectional hillshade (sun altitude "
-                      f"{terrain.HILLSHADE_ALTITUDE:g} degrees).")
+                      f"{terrain.HILLSHADE_ALTITUDE:g} degrees).", derived=True)
     elif style == "lrm":
         renderer = lrm_renderer(layer)
         renderer.setOpacity(settings.LRM_OPACITY)       # the hillshade below shows through
@@ -133,7 +138,8 @@ def make_layer(path, name, style):
         layer.setMinimumScale(settings.LRM_MAX_SCALE)   # most zoomed-out scale shown
         layer.setMaximumScale(0.0)
         credit(layer, "Local relief model (elevation minus its local mean), computed "
-                      "live; drawn only at 1:{:,.0f} and closer.".format(settings.LRM_MAX_SCALE))
+                      "live; drawn only at 1:{:,.0f} and closer.".format(settings.LRM_MAX_SCALE),
+               derived=True)
     elif style == "canopy":
         renderer = canopy_renderer(layer)
         renderer.setOpacity(0.5)
@@ -142,7 +148,7 @@ def make_layer(path, name, style):
         layer.setMinimumScale(settings.LRM_MAX_SCALE)
         layer.setMaximumScale(0.0)
         credit(layer, f"Canopy check: DSM minus DTM over {terrain.CANOPY_THRESHOLD_M:g} m, "
-                      "where the DTM is the model's guess at the ground.")
+                      "where the DTM is the model's guess at the ground.", derived=True)
     elif style == "spread":
         layer.setRenderer(spread_renderer(layer))
         credit(layer, "Spread (standard deviation) of surface heights within each pixel.")

@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""QGIS-side robustness: QGIS's proxy setting and views around a pole
-(2026-11-15 review). Headless, no network."""
+"""QGIS-side robustness: QGIS's proxy setting and views around a pole.
+Headless, no network."""
 import pytest
 
 pytest.importorskip("qgis.core")

@@ -2,7 +2,7 @@
 """
 GEM-15 tile edges: the true outline of every tile the plugin has shown, in a
 small GeoPackage beside the VRTs, so straight features along them can be
-recognised as possible seams rather than scarps (2026-11-15 review).
+recognised as possible seams rather than scarps.
 
 Uses OGR/OSR directly (no QGIS objects), so it can run in a background task.
 

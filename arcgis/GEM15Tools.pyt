@@ -35,8 +35,13 @@ Keep the "gem15core" folder next to this file: the toolbox imports it.
 After updating the toolbox folder, right-click the toolbox > Refresh: a
 changed gem15core is re-imported (restarting Pro also works).
 
-Data: CC-BY 4.0, "This dataset is produced by Google". Cite Batchu et al.
-(2026), EarthArXiv preprint, doi:10.31223/X55N75. Heights are EGM96.
+Data: CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/), "This
+dataset is produced by Google". Cite Batchu et al. (2026), EarthArXiv
+preprint, doi:10.31223/X55N75. Heights are EGM96.
+
+An independent project, not affiliated with or endorsed by Google. Provided
+as is, without warranty; not for hazard assessment, planning, engineering or
+safety decisions without lidar and field checks.
 
 Assumptions (flagged; verify if something looks wrong):
  A1. Your .acs connection points at bucket "climate-and-sustainability"
@@ -111,11 +116,13 @@ Assumptions (flagged; verify if something looks wrong):
      255 x sin(altitude), as for a single sun.
 """
 
+import contextlib
 import hashlib
 import json
 import math
 import os
 import re
+import shutil
 import sys
 import tempfile
 import uuid
@@ -159,9 +166,9 @@ if _loaded_core is not None and _core_fp is not None:
         for _name in [m for m in sys.modules if m == "gem15core" or m.startswith("gem15core.")]:
             del sys.modules[_name]
 
-from gem15core import (ATTRIBUTION, BUCKET, BUCKET_URL, CAVEAT, CITATION,  # noqa: E402
-                       DATA_FOLDER, DATA_LICENCE, DSM_BANDS, MAP_CREDIT, VERTICAL_DATUM,
-                       Gem15Error)
+from gem15core import (BUCKET, BUCKET_URL, CAVEAT, CITATION, DATA_FOLDER,  # noqa: E402
+                       DATA_LICENCE, DATA_LICENCE_URL, DERIVED_NOTE, DISCLAIMER, DSM_BANDS,
+                       MAP_CREDIT, VERTICAL_DATUM, Gem15Error)
 from gem15core import crs as gcrs  # noqa: E402
 from gem15core import download  # noqa: E402
 from gem15core import extent as gext  # noqa: E402
@@ -564,10 +571,12 @@ def find_layer(m, source=None, name=None):
     return None
 
 
-def credit_text():
-    """Credit, licence, citation and caveat, as CC BY 4.0 asks (for layer metadata)."""
-    return (f"{MAP_CREDIT}. {ATTRIBUTION}; licence {DATA_LICENCE}. Cite: {CITATION}. "
-            f"Heights: {VERTICAL_DATUM}. {CAVEAT}")
+def credit_text(derived=False):
+    """Credit, licence, citation and caveat, as CC BY 4.0 asks (for layer
+    metadata); derived=True says the layer is computed from GEM-15 (modified)."""
+    note = f"{DERIVED_NOTE}. " if derived else ""
+    return (f"{note}{MAP_CREDIT}. Licence {DATA_LICENCE} ({DATA_LICENCE_URL}). "
+            f"Cite: {CITATION}. Heights: {VERTICAL_DATUM}. {CAVEAT} {DISCLAIMER}")
 
 
 def set_credits(layer, title):
@@ -864,6 +873,18 @@ def safe_name(text):
     return out.strip("_") or "gem15"
 
 
+@contextlib.contextmanager
+def scratch_dir():
+    """A temporary folder, removed afterwards as far as possible: Pro may still
+    hold a file in it open. (tempfile.TemporaryDirectory's ignore_cleanup_errors
+    needs Python 3.10; Pro 3.0-3.2 ship Python 3.9.)"""
+    path = tempfile.mkdtemp(prefix="gem15_")
+    try:
+        yield path
+    finally:
+        shutil.rmtree(path, ignore_errors=True)
+
+
 def circle_kernel(radius_m, cell_m):
     """Square kernel (list of rows) averaging over a circle: 1/N inside, 0 outside.
     Same circle as terrain.circle_offsets and the Focal Statistics NbrCircle."""
@@ -1073,7 +1094,7 @@ def save_layer_file(raster, name, path, key, swaps=()):
     for d in doc.get("layerDefinitions", []):
         style_layer_json(d, key)
         d["name"] = name
-        d["description"] = f"{name}. {credit_text()}"
+        d["description"] = f"{name}. {credit_text(derived=True)}"
     with open(path, "w", encoding="utf-8") as fh:
         json.dump(doc, fh, indent=2)
     return path
@@ -1126,7 +1147,7 @@ def terrain_layer_files(src, label, keys, folder, radius_m=terrain.LRM_RADIUS_M,
     """Write one live .lyrx per derivative into folder; returns their paths,
     bottom layer first. Remote sources are built on a stand-in (A15)."""
     os.makedirs(folder, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix="gem15_", ignore_cleanup_errors=True) as tmp:
+    with scratch_dir() as tmp:
         base = make_stand_in(src, tmp) if is_remote(src) else src
         swaps = stand_in_swaps(base, src) if base != src else ()
         rasters = terrain_rasters(base, keys, radius_m, altitude, method, azimuth, z)
@@ -1143,7 +1164,7 @@ def terrain_layer_files(src, label, keys, folder, radius_m=terrain.LRM_RADIUS_M,
 def canopy_layer_file(dsm, dtm, name, path):
     """A live canopy-check .lyrx (DSM - DTM > threshold), built on stand-ins
     when the sources are remote (A15)."""
-    with tempfile.TemporaryDirectory(prefix="gem15_", ignore_cleanup_errors=True) as tmp:
+    with scratch_dir() as tmp:
         sd = make_stand_in(dsm, tmp) if is_remote(dsm) else dsm
         st = make_stand_in(dtm, tmp) if is_remote(dtm) else dtm
         swaps = ([*stand_in_swaps(sd, dsm)] if sd != dsm else []) + \
@@ -1202,7 +1223,7 @@ def clip_to_tif(bbox, tiles, product, band, out_tif, sr=None, log=None, callback
     from gem15core import gdalops                      # needs GDAL (osgeo)
     folder = os.path.dirname(os.path.abspath(out_tif))
     os.makedirs(folder, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix="gem15_", ignore_cleanup_errors=True) as tmp:
+    with scratch_dir() as tmp:
         src = gdalops.build_vrt(bbox, os.path.join(tmp, "clip.vrt"), product, band,
                                 dst_crs=sr_to_gdal(sr) if sr is not None else None,
                                 tiles=tiles, log=log)
@@ -1612,7 +1633,8 @@ class SwathProfile:
                 _log(line)
         folder = output_folder(p["out_folder"].valueAsText)
         stem = os.path.join(folder, safe_name(p["out_name"].valueAsText or "swath_profile"))
-        csv = profile.to_csv(sw, stem + ".csv", fit) or stem + ".csv"
+        csv = profile.to_csv(sw, stem + ".csv", fit,
+                             source=f"{desc.catalogPath} ({sr.name})") or stem + ".csv"
         png = profile.plot_png(sw, stem + ".png", fit,
                                title=f"Swath profile, {width:g} m wide ({MAP_CREDIT})")
         _log(f"{sw.length_m:,.0f} m long, {len(sw.distance)} steps of {cell:g} m. "

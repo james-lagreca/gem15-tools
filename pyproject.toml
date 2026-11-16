@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
 # Test configuration only; the tools are not installed as a package.
 # Run from the repo root, e.g. with ArcGIS Pro's Python (it has GDAL):
 #   "<Pro install>\bin\Python\envs\arcgispro-py3\python.exe" -m pytest

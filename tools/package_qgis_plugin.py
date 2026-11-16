@@ -4,11 +4,12 @@
 Build the QGIS plugin zip for "Plugins > Manage and Install Plugins >
 Install from ZIP" (and for plugins.qgis.org).
 
-    python tools/package_qgis_plugin.py            # -> dist/gem15-<version>.zip
+    python tools/package_qgis_plugin.py            # -> dist/gem15-qgis-<version>.zip
     python tools/package_qgis_plugin.py --out some/folder
 
 The zip holds one top-level folder, gem15/, with the plugin, its vendored
-core and the GPL licence (plugins.qgis.org requires a LICENSE file).
+core, the GPL licence (plugins.qgis.org requires a LICENSE file) and the
+project README.
 Compiled files and caches are left out. The vendored core is checked first:
 the script stops if it has drifted from core/gem15core.
 """
@@ -39,7 +40,7 @@ def build(out_dir):
         raise SystemExit("Vendored core has drifted; run python tools/vendor_core.py\n"
                          + "\n".join(drift))
     os.makedirs(out_dir, exist_ok=True)
-    path = os.path.join(out_dir, f"gem15-{version()}.zip")
+    path = os.path.join(out_dir, f"gem15-qgis-{version()}.zip")
     with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as z:
         for folder, dirs, files in os.walk(PLUGIN):
             dirs[:] = sorted(d for d in dirs if d not in SKIP_DIRS)
@@ -50,6 +51,7 @@ def build(out_dir):
                 rel = os.path.relpath(full, os.path.dirname(PLUGIN))
                 z.write(full, rel.replace(os.sep, "/"))
         z.write(os.path.join(ROOT, "LICENSE"), "gem15/LICENSE")
+        z.write(os.path.join(ROOT, "README.md"), "gem15/README.md")
     return path
 
 

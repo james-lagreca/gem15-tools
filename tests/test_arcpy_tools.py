@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
 """GEM15Tools.pyt with the real arcpy (ArcGIS Pro), headless and offline.
 
 Helpers are checked against numpy and GDAL on synthetic rasters, and the

@@ -1,3 +1,8 @@
 * text=auto
 *.pyt text diff=python
 *.tif binary
+
+# Generated: shown collapsed in GitHub diffs and left out of the language bar.
+arcgis/gem15core/** linguist-generated=true
+qgis/gem15/gem15core/** linguist-generated=true
+arcgis/GEM15Tools.*.pyt.xml linguist-generated=true
