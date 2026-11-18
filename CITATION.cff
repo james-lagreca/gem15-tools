@@ -4,7 +4,7 @@ cff-version: 1.2.0
 message: "If you use these tools, please cite them, and cite the GEM-15 data (see references)."
 title: "GEM-15 tools: ArcGIS Pro toolbox and QGIS plugin for streaming GEM-15 elevation"
 version: 0.1.0
-date-released: "2026-11-16"
+date-released: "2026-11-18"
 license: GPL-2.0-or-later
 repository-code: "https://github.com/james-lagreca/gem15-tools"
 authors:

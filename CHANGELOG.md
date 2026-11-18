@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.0 (2026-11-16)
+## 0.1.0 (2026-11-18)
 
 First release: an ArcGIS Pro toolbox and a QGIS plugin that stream Google's
 GEM-15 15 m elevation for active-fault mapping, sharing one core.

@@ -11,7 +11,7 @@ Google.
 ## Install
 
 Download `gem15-qgis-<version>.zip` from the
-[latest release](https://github.com/james-lagreca/gem15-tools/releases/latest).
+[Releases page](https://github.com/james-lagreca/gem15-tools/releases).
 In QGIS: **Plugins > Manage and Install Plugins... > Install from ZIP**,
 choose the zip, then **Install Plugin** (QGIS warns that the plugin is from
 an untrusted source: choose *Yes*). A **GEM-15** toolbar appears (if not,

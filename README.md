@@ -83,9 +83,9 @@ engineering or safety decisions without lidar and field checks.
 ## Install
 
 Download from the
-[latest release](https://github.com/james-lagreca/gem15-tools/releases/latest)
+[Releases page](https://github.com/james-lagreca/gem15-tools/releases)
 (not the green *Code* button or the *Source code* zips, which hold the
-source):
+source). Version 0.1.0 is a pre-release:
 
 - **ArcGIS Pro:** unzip `gem15-arcgis-<version>.zip` to a folder you will
   keep. In Pro: *Catalog* pane > *Toolboxes* > right-click > *Add Toolbox* >
